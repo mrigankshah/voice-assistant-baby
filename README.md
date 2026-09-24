@@ -1,6 +1,6 @@
 # Voice Assistant Baby
 
-The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, and keep a short conversation history. Spoken replies will come later.
+The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, keep a short conversation history, and show Ollama's reply as it is generated. Spoken replies will come later.
 
 ## Run on the Pi
 
@@ -29,9 +29,9 @@ Your existing Moonshine command is `moonshine-voice mic --language en --model-ar
 python3 voice_assistant.py
 ```
 
-Choose an Ollama model, speak a question, and pause. The program prints the finished Moonshine transcript and Ollama's reply. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. It sends only finished transcript lines to Ollama and currently prints replies rather than speaking them.
+Choose an Ollama model, speak a question, and pause. The program prints the finished Moonshine transcript, then shows Ollama's reply as it arrives. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. It sends only finished transcript lines to Ollama and currently prints replies rather than speaking them. The same response chunks can later feed speech output without waiting for the whole reply.
 
-If `python3 voice_assistant.py` says Moonshine is not available, activate the Python environment that provides your working `moonshine-voice` command, then run it again.
+If Moonshine is installed in a `.venv` inside this repository, run `./.venv/bin/python voice_assistant.py` instead; this uses the right environment without activating it. If you set up automatic activation, `python voice_assistant.py` works too.
 
 ## Develop on Windows
 

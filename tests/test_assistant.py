@@ -23,9 +23,15 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         self.requests.append((self.path, body))
         self.send_response(200)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        self.wfile.write(json.dumps({"message": {"content": "Hello from Ollama"}}).encode())
+        for event in (
+            {"message": {"content": "Hello "}, "done": False},
+            {"message": {"content": "from Ollama"}, "done": False},
+            {"message": {"content": ""}, "done": True},
+        ):
+            self.wfile.write((json.dumps(event) + "\n").encode())
+            self.wfile.flush()
 
     def log_message(self, format, *args):
         pass
@@ -50,10 +56,15 @@ class AssistantTests(unittest.TestCase):
 
     def test_sends_selected_model_and_conversation_to_ollama(self):
         messages = [{"role": "user", "content": "Hello"}]
-        self.assertEqual(chat("alpha:latest", messages, base_url=self.base_url), "Hello from Ollama")
+        chunks = []
+        self.assertEqual(
+            chat("alpha:latest", messages, on_chunk=chunks.append, base_url=self.base_url),
+            "Hello from Ollama",
+        )
+        self.assertEqual(chunks, ["Hello ", "from Ollama"])
         self.assertEqual(
             FakeOllamaHandler.requests[-1],
-            ("/api/chat", {"model": "alpha:latest", "messages": messages, "stream": False}),
+            ("/api/chat", {"model": "alpha:latest", "messages": messages, "stream": True}),
         )
 
     def test_picker_retries_invalid_choice(self):

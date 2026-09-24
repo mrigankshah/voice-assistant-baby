@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -57,24 +58,76 @@ def list_models(*, base_url: str = OLLAMA_URL) -> list[str]:
     )
 
 
-def chat(model: str, messages: list[dict[str, str]], *, base_url: str = OLLAMA_URL) -> str:
-    result = request_json(
-        "/api/chat",
-        {"model": model, "messages": messages, "stream": False},
-        base_url=base_url,
+def chat(
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    on_chunk: Callable[[str], None] | None = None,
+    base_url: str = OLLAMA_URL,
+) -> str:
+    request = Request(
+        f"{base_url.rstrip('/')}/api/chat",
+        data=json.dumps({"model": model, "messages": messages, "stream": True}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
     )
-    message = result.get("message")
-    content = message.get("content") if isinstance(message, dict) else None
-    if not isinstance(content, str) or not content.strip():
+    parts: list[str] = []
+    finished = False
+    try:
+        with urlopen(request, timeout=300) as response:
+            for line in response:
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError as exc:
+                    raise OllamaError("Ollama returned invalid streaming JSON.") from exc
+                if not isinstance(event, dict):
+                    raise OllamaError("Ollama returned an unexpected streaming response.")
+                if event.get("error"):
+                    raise OllamaError(f"Ollama error: {event['error']}")
+                message = event.get("message")
+                if message is not None and not isinstance(message, dict):
+                    raise OllamaError("Ollama returned an unexpected chat message.")
+                content = message.get("content") if message else None
+                if content is not None and not isinstance(content, str):
+                    raise OllamaError("Ollama returned unexpected chat content.")
+                if content:
+                    parts.append(content)
+                    if on_chunk is not None:
+                        on_chunk(content)
+                if event.get("done") is True:
+                    finished = True
+                    break
+    except HTTPError as exc:
+        try:
+            detail = json.load(exc).get("error", exc.reason)
+        except (ValueError, AttributeError):
+            detail = exc.reason
+        raise OllamaError(f"Ollama returned HTTP {exc.code}: {detail}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise OllamaError(
+            "Cannot reach Ollama on this computer. Check that Ollama is running "
+            "with `ollama list`, then try again."
+        ) from exc
+
+    if not finished:
+        raise OllamaError("Ollama stopped streaming before the reply finished.")
+    reply = "".join(parts).strip()
+    if not reply:
         raise OllamaError("Ollama returned no text. This model may not support chat.")
-    return content.strip()
+    return reply
 
 
 def answer_with_history(
-    model: str, prompt: str, history: list[dict[str, str]]
+    model: str,
+    prompt: str,
+    history: list[dict[str, str]],
+    *,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> tuple[str, list[dict[str, str]]]:
     user_message = {"role": "user", "content": prompt}
-    reply = chat(model, history + [user_message])
+    reply = chat(model, history + [user_message], on_chunk=on_chunk)
     updated_history = (history + [user_message, {"role": "assistant", "content": reply}])[
         -MAX_HISTORY_MESSAGES:
     ]
@@ -126,12 +179,14 @@ def main() -> int:
                 continue
 
             try:
-                reply, history = answer_with_history(model, prompt, history)
+                print("\nAssistant: ", end="", flush=True)
+                _, history = answer_with_history(
+                    model, prompt, history, on_chunk=lambda chunk: print(chunk, end="", flush=True)
+                )
             except OllamaError as exc:
-                print(f"Error: {exc}", file=sys.stderr)
+                print(f"\nError: {exc}", file=sys.stderr)
                 continue
-
-            print(f"\nAssistant: {reply}")
+            print()
     except (OllamaError, EOFError, KeyboardInterrupt) as exc:
         if isinstance(exc, OllamaError):
             print(f"Error: {exc}", file=sys.stderr)

@@ -55,11 +55,14 @@ def main() -> int:
 
                 print(f"\nYou: {prompt}")
                 try:
-                    reply, history = answer_with_history(model, prompt, history)
+                    print("\nAssistant: ", end="", flush=True)
+                    _, history = answer_with_history(
+                        model, prompt, history, on_chunk=lambda chunk: print(chunk, end="", flush=True)
+                    )
                 except OllamaError as exc:
-                    print(f"Error: {exc}", file=sys.stderr)
+                    print(f"\nError: {exc}", file=sys.stderr)
                     continue
-                print(f"\nAssistant: {reply}")
+                print()
         except KeyboardInterrupt:
             print("\nStopping.")
         finally:
