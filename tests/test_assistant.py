@@ -5,7 +5,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from assistant import chat, choose_model, list_models
+from assistant import answer_with_history, chat, choose_model, list_models
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -62,6 +62,22 @@ class AssistantTests(unittest.TestCase):
         selected = choose_model(["alpha:latest", "zeta:latest"], read=lambda _: next(answers), write=output.append)
         self.assertEqual(selected, "zeta:latest")
         self.assertEqual(output.count("Enter a number from 1 to 2."), 2)
+
+    def test_answer_remembers_previous_turn(self):
+        from unittest.mock import patch
+
+        with patch("assistant.chat", return_value="Hello from Ollama") as fake_chat:
+            _, history = answer_with_history("alpha:latest", "Hello", [])
+            answer_with_history("alpha:latest", "Follow up", history)
+
+        self.assertEqual(
+            fake_chat.call_args.args[1],
+            [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hello from Ollama"},
+                {"role": "user", "content": "Follow up"},
+            ],
+        )
 
 
 if __name__ == "__main__":

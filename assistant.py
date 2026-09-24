@@ -70,6 +70,17 @@ def chat(model: str, messages: list[dict[str, str]], *, base_url: str = OLLAMA_U
     return content.strip()
 
 
+def answer_with_history(
+    model: str, prompt: str, history: list[dict[str, str]]
+) -> tuple[str, list[dict[str, str]]]:
+    user_message = {"role": "user", "content": prompt}
+    reply = chat(model, history + [user_message])
+    updated_history = (history + [user_message, {"role": "assistant", "content": reply}])[
+        -MAX_HISTORY_MESSAGES:
+    ]
+    return reply, updated_history
+
+
 def choose_model(models: list[str], *, read=input, write=print) -> str:
     if not models:
         raise OllamaError("No models are installed in Ollama. Check `ollama list` on the Pi.")
@@ -114,17 +125,13 @@ def main() -> int:
                 print(f"Now chatting with {model}. Conversation cleared.")
                 continue
 
-            user_message = {"role": "user", "content": prompt}
             try:
-                reply = chat(model, history + [user_message])
+                reply, history = answer_with_history(model, prompt, history)
             except OllamaError as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 continue
 
             print(f"\nAssistant: {reply}")
-            history = (history + [user_message, {"role": "assistant", "content": reply}])[
-                -MAX_HISTORY_MESSAGES:
-            ]
     except (OllamaError, EOFError, KeyboardInterrupt) as exc:
         if isinstance(exc, OllamaError):
             print(f"Error: {exc}", file=sys.stderr)
