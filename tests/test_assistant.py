@@ -5,11 +5,13 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from assistant import answer_with_history, chat, choose_model, list_models
+from assistant import ChatCancellation, ChatInterrupted, answer_with_history, chat, choose_model, list_models
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
     requests = []
+    slow_chunk_sent = threading.Event()
+    continue_slow_reply = threading.Event()
 
     def do_GET(self):
         self.send_response(200)
@@ -25,13 +27,23 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        for event in (
+        events = (
             {"message": {"content": "Hello "}, "done": False},
             {"message": {"content": "from Ollama"}, "done": False},
             {"message": {"content": ""}, "done": True},
-        ):
-            self.wfile.write((json.dumps(event) + "\n").encode())
-            self.wfile.flush()
+        )
+        try:
+            if body["messages"][-1]["content"] == "Slow reply":
+                self.wfile.write((json.dumps(events[0]) + "\n").encode())
+                self.wfile.flush()
+                self.slow_chunk_sent.set()
+                self.continue_slow_reply.wait(timeout=3)
+                events = events[1:]
+            for event in events:
+                self.wfile.write((json.dumps(event) + "\n").encode())
+                self.wfile.flush()
+        except ConnectionError:
+            pass
 
     def log_message(self, format, *args):
         pass
@@ -73,6 +85,57 @@ class AssistantTests(unittest.TestCase):
         selected = choose_model(["alpha:latest", "zeta:latest"], read=lambda _: next(answers), write=output.append)
         self.assertEqual(selected, "zeta:latest")
         self.assertEqual(output.count("Enter a number from 1 to 2."), 2)
+
+    def test_stream_stops_after_interruption(self):
+        cancellation = ChatCancellation()
+        received = []
+
+        def on_chunk(chunk):
+            received.append(chunk)
+            cancellation.cancel()
+
+        with self.assertRaises(ChatInterrupted):
+            chat(
+                "alpha:latest",
+                [{"role": "user", "content": "Long answer"}],
+                on_chunk=on_chunk,
+                cancellation=cancellation,
+                base_url=self.base_url,
+            )
+        self.assertEqual(received, ["Hello "])
+
+    def test_interruption_allows_a_new_request_without_waiting(self):
+        FakeOllamaHandler.slow_chunk_sent.clear()
+        FakeOllamaHandler.continue_slow_reply.clear()
+        cancellation = ChatCancellation()
+        result = []
+
+        def run_chat():
+            try:
+                chat(
+                    "alpha:latest",
+                    [{"role": "user", "content": "Slow reply"}],
+                    cancellation=cancellation,
+                    base_url=self.base_url,
+                )
+            except ChatInterrupted:
+                result.append("interrupted")
+
+        worker = threading.Thread(target=run_chat, daemon=True)
+        try:
+            worker.start()
+            self.assertTrue(FakeOllamaHandler.slow_chunk_sent.wait(timeout=1))
+            cancellation.cancel()
+            new_reply = chat(
+                "alpha:latest",
+                [{"role": "user", "content": "New question"}],
+                base_url=self.base_url,
+            )
+            self.assertEqual(new_reply, "Hello from Ollama")
+        finally:
+            FakeOllamaHandler.continue_slow_reply.set()
+            worker.join(timeout=3)
+        self.assertEqual(result, ["interrupted"])
 
     def test_answer_remembers_previous_turn(self):
         from unittest.mock import patch

@@ -6,9 +6,17 @@ import argparse
 import sys
 from math import isfinite
 from queue import Empty, Queue
+from threading import Thread
 from time import monotonic
 
-from assistant import OllamaError, answer_with_history, choose_model, list_models
+from assistant import (
+    ChatCancellation,
+    ChatInterrupted,
+    OllamaError,
+    answer_with_history,
+    choose_model,
+    list_models,
+)
 
 
 class UtteranceBuffer:
@@ -38,22 +46,6 @@ class UtteranceBuffer:
         self.parts.clear()
         self.deadline = None
         return prompt
-
-
-def next_utterance(events: Queue[tuple[str, str, float]], pause_seconds: float) -> str:
-    buffer = UtteranceBuffer(pause_seconds)
-    while True:
-        try:
-            kind, text, at = events.get(timeout=0.1)
-        except Empty:
-            if buffer.ready(monotonic()):
-                return buffer.take()
-            continue
-
-        if kind == "started":
-            buffer.started()
-        else:
-            buffer.finished(text, at)
 
 
 def main() -> int:
@@ -104,30 +96,95 @@ def main() -> int:
     )
     mic.add_listener(SpeechActivity())
     history: list[dict[str, str]] = []
+    utterance = UtteranceBuffer(args.pause_seconds)
+    reply_events: Queue[tuple[str, int, object]] = Queue()
+    turn_number = 0
+    active_turn: int | None = None
+    active_cancellation: ChatCancellation | None = None
+
+    def run_reply(
+        turn: int,
+        prompt: str,
+        prior_history: list[dict[str, str]],
+        cancellation: ChatCancellation,
+    ) -> None:
+        def on_chunk(chunk: str) -> None:
+            cancellation.check()
+            reply_events.put(("chunk", turn, chunk))
+
+        try:
+            _, updated_history = answer_with_history(
+                model, prompt, prior_history, on_chunk=on_chunk, cancellation=cancellation
+            )
+        except ChatInterrupted:
+            return
+        except OllamaError as exc:
+            reply_events.put(("error", turn, str(exc)))
+        else:
+            reply_events.put(("done", turn, updated_history))
+
     print(f"Loading Moonshine. Chat model: {model}")
     with mic:
         mic.load()
         print(
             f"Listening. Pause for {args.pause_seconds:g} seconds when done speaking. "
-            "Press Ctrl+C to stop."
+            "Speak again to interrupt a reply. Press Ctrl+C to stop."
         )
         mic.start()
         try:
             while True:
-                prompt = next_utterance(speech_events, args.pause_seconds)
-                print(f"\nYou: {prompt}")
                 try:
-                    print("\nAssistant: ", end="", flush=True)
-                    _, history = answer_with_history(
-                        model, prompt, history, on_chunk=lambda chunk: print(chunk, end="", flush=True)
-                    )
-                except OllamaError as exc:
-                    print(f"\nError: {exc}", file=sys.stderr)
+                    kind, text, at = speech_events.get_nowait()
+                except Empty:
+                    pass
+                else:
+                    if kind == "started":
+                        utterance.started()
+                        if active_cancellation is not None:
+                            active_cancellation.cancel()
+                            active_cancellation = None
+                            active_turn = None
+                            print("\n[Interrupted. Listening for your new question.]")
+                    else:
+                        utterance.finished(text, at)
                     continue
-                print()
+
+                if active_turn is None and utterance.ready(monotonic()):
+                    prompt = utterance.take()
+                    print(f"\nYou: {prompt}")
+                    print("\nAssistant: ", end="", flush=True)
+                    turn_number += 1
+                    active_turn = turn_number
+                    active_cancellation = ChatCancellation()
+                    Thread(
+                        target=run_reply,
+                        args=(active_turn, prompt, history, active_cancellation),
+                        daemon=True,
+                    ).start()
+                    continue
+
+                try:
+                    kind, turn, payload = reply_events.get(timeout=0.05)
+                except Empty:
+                    continue
+                if turn != active_turn:
+                    continue
+                if kind == "chunk":
+                    print(payload, end="", flush=True)
+                elif kind == "done":
+                    history = payload
+                    active_turn = None
+                    active_cancellation = None
+                    print()
+                elif kind == "error":
+                    active_turn = None
+                    active_cancellation = None
+                    print(f"\nError: {payload}", file=sys.stderr)
         except KeyboardInterrupt:
             print("\nStopping.")
         finally:
+            if active_cancellation is not None:
+                active_cancellation.cancel()
             mic.stop()
     return 0
 
