@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from math import isfinite
 from queue import Empty, Queue
@@ -17,6 +18,56 @@ from assistant import (
     choose_model,
     list_models,
 )
+
+
+class ConversationWindow:
+    """Require a wake phrase until a conversation is active."""
+
+    wake_prefix = re.compile(r"^\W*hey\W+baby\b[\W_]*", re.IGNORECASE)
+
+    def __init__(self, timeout_seconds: float) -> None:
+        self.timeout_seconds = timeout_seconds
+        self.awake = False
+        self.deadline: float | None = None
+
+    def sleep(self) -> None:
+        self.awake = False
+        self.deadline = None
+
+    def expire(self, now: float) -> bool:
+        if self.awake and self.deadline is not None and now >= self.deadline:
+            self.sleep()
+            return True
+        return False
+
+    def speech_started(self, at: float) -> bool:
+        expired = self.expire(at)
+        if self.awake:
+            # Hold the conversation open through speech and the short pause buffer.
+            self.deadline = None
+        return expired
+
+    def wait_for_followup(self, now: float) -> None:
+        if self.awake:
+            self.deadline = now + self.timeout_seconds
+
+    def accept(self, text: str, now: float) -> str | None:
+        wake = self.wake_prefix.match(text)
+        if wake is not None:
+            self.awake = True
+            text = text[wake.end():].strip()
+        elif not self.awake:
+            return None
+
+        if " ".join(re.findall(r"\w+", text.casefold())) == "go to sleep":
+            self.sleep()
+            return None
+        if not text:
+            self.wait_for_followup(now)
+            return None
+        # Ollama may take longer than the follow-up window to answer.
+        self.deadline = None
+        return text
 
 
 class UtteranceBuffer:
@@ -51,6 +102,12 @@ class UtteranceBuffer:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Talk to a local Ollama model through Moonshine.")
     parser.add_argument(
+        "--conversation-timeout",
+        type=float,
+        default=15.0,
+        help="Seconds to wait for a follow-up after replying before requiring Hey Baby again (default: 15).",
+    )
+    parser.add_argument(
         "--pause-seconds",
         type=float,
         default=1.5,
@@ -59,6 +116,8 @@ def main() -> int:
     args = parser.parse_args()
     if not isfinite(args.pause_seconds) or args.pause_seconds < 0:
         parser.error("--pause-seconds must be a finite number that is zero or greater")
+    if not isfinite(args.conversation_timeout) or args.conversation_timeout <= 0:
+        parser.error("--conversation-timeout must be a finite number greater than zero")
 
     try:
         model = choose_model(list_models())
@@ -97,6 +156,7 @@ def main() -> int:
     mic.add_listener(SpeechActivity())
     history: list[dict[str, str]] = []
     utterance = UtteranceBuffer(args.pause_seconds)
+    conversation = ConversationWindow(args.conversation_timeout)
     reply_events: Queue[tuple[str, int, object]] = Queue()
     turn_number = 0
     active_turn: int | None = None
@@ -127,8 +187,11 @@ def main() -> int:
     with mic:
         mic.load()
         print(
-            f"Listening. Pause for {args.pause_seconds:g} seconds when done speaking. "
-            "Speak again to interrupt a reply. Press Ctrl+C to stop."
+            'Say "Hey Baby" to start, followed by your question. '
+            f"Follow-ups stay active for {args.conversation_timeout:g} seconds after each reply.\n"
+            f"Pause for {args.pause_seconds:g} seconds when done speaking. "
+            'Speak again to interrupt a reply; say "go to sleep" to end the conversation. '
+            "Press Ctrl+C to stop."
         )
         mic.start()
         try:
@@ -139,18 +202,32 @@ def main() -> int:
                     pass
                 else:
                     if kind == "started":
+                        if conversation.speech_started(at):
+                            print('\n[Waiting for "Hey Baby".]')
                         utterance.started()
-                        if active_cancellation is not None:
+                        if conversation.awake and active_cancellation is not None:
                             active_cancellation.cancel()
                             active_cancellation = None
                             active_turn = None
                             print("\n[Interrupted. Listening for your new question.]")
                     else:
                         utterance.finished(text, at)
+                        if not utterance.parts:
+                            conversation.wait_for_followup(at)
                     continue
 
+                if conversation.expire(monotonic()):
+                    print('\n[Waiting for "Hey Baby".]')
+
                 if active_turn is None and utterance.ready(monotonic()):
-                    prompt = utterance.take()
+                    was_awake = conversation.awake
+                    prompt = conversation.accept(utterance.take(), monotonic())
+                    if prompt is None:
+                        if was_awake and not conversation.awake:
+                            print('\n[Waiting for "Hey Baby".]')
+                        elif conversation.awake:
+                            print("\n[I'm listening. What's your question?]")
+                        continue
                     print(f"\nYou: {prompt}")
                     print("\nAssistant: ", end="", flush=True)
                     turn_number += 1
@@ -176,10 +253,12 @@ def main() -> int:
                     active_turn = None
                     active_cancellation = None
                     print()
+                    conversation.wait_for_followup(monotonic())
                 elif kind == "error":
                     active_turn = None
                     active_cancellation = None
                     print(f"\nError: {payload}", file=sys.stderr)
+                    conversation.wait_for_followup(monotonic())
         except KeyboardInterrupt:
             print("\nStopping.")
         finally:

@@ -29,7 +29,15 @@ Your existing Moonshine command is `moonshine-voice mic --language en --model-ar
 ./.venv/bin/python voice_assistant.py
 ```
 
-Choose an Ollama model and speak a question. The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript and shows Ollama's reply as it arrives. If the reply is going in the wrong direction, start speaking again: the current answer stops, and your new question replaces it. The interrupted answer is not kept in conversation history. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken. The same response chunks can later feed speech output without waiting for the whole reply.
+Choose an Ollama model and start with **"Hey Baby"**. You can say "Hey Baby, explain black holes" in one utterance, or say the wake phrase and then ask your question. The phrase must be at the beginning of the transcribed utterance; case and punctuation do not matter.
+
+After each reply, you have **15 seconds** to start a follow-up without repeating the wake phrase. Speaking within that window keeps the conversation active through your question and the next reply. The timer does not run while you are speaking, pausing within your question, or waiting for Ollama. After it expires, the screen shows `[Waiting for "Hey Baby".]`. Say **"go to sleep"** during an active conversation to return to waiting immediately. Completed conversation history is retained until the program exits.
+
+Moonshine still listens and transcribes locally while waiting, but ordinary conversation is ignored and is not sent to Ollama. During an active conversation, nearby speech is treated as directed at the assistant; this does not identify individual speakers.
+
+The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript and shows Ollama's reply as it arrives. If the reply is going in the wrong direction, start speaking again: the current answer stops, and your new question replaces it. The interrupted answer is not kept in conversation history. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken. The same response chunks can later feed speech output without waiting for the whole reply.
+
+To change the follow-up window, run `./.venv/bin/python voice_assistant.py --conversation-timeout 5` (seconds). This is separate from the short pause within a question.
 
 To wait longer after a pause, run `./.venv/bin/python voice_assistant.py --pause-seconds 2.5` from the repo on the Pi. Use a smaller value if it feels too slow.
 
