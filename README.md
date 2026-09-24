@@ -23,15 +23,17 @@ The script uses Ollama's local API at `http://127.0.0.1:11434`. You do not need 
 
 ## Try the microphone
 
-Your existing Moonshine command is `moonshine-voice mic --language en --model-arch 4`. Confirm it transcribes speech, then stop it with Ctrl+C. In the same Python environment, run:
+Your existing Moonshine command is `moonshine-voice mic --language en --model-arch 4`. Confirm it transcribes speech, then stop it with Ctrl+C. Since Moonshine is installed in the repo's `.venv`, run:
 
 ```bash
-python3 voice_assistant.py
+./.venv/bin/python voice_assistant.py
 ```
 
-Choose an Ollama model, speak a question, and pause. The program prints the finished Moonshine transcript, then shows Ollama's reply as it arrives. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. It sends only finished transcript lines to Ollama and currently prints replies rather than speaking them. The same response chunks can later feed speech output without waiting for the whole reply.
+Choose an Ollama model and speak a question. The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript and shows Ollama's reply as it arrives. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken. The same response chunks can later feed speech output without waiting for the whole reply.
 
-If Moonshine is installed in a `.venv` inside this repository, run `./.venv/bin/python voice_assistant.py` instead; this uses the right environment without activating it. If you set up automatic activation, `python voice_assistant.py` works too.
+To wait longer after a pause, run `./.venv/bin/python voice_assistant.py --pause-seconds 2.5` from the repo on the Pi. Use a smaller value if it feels too slow.
+
+If you set up automatic activation, `python voice_assistant.py` works too.
 
 ## Develop on Windows
 
