@@ -51,6 +51,33 @@ class WeatherTests(unittest.TestCase):
             with self.assertRaisesRegex(WeatherError, "outside"):
                 get_weather("Boston", "2026-10-20")
 
+    def test_yearless_date_uses_year_in_forecast(self):
+        def fake_request(url):
+            result = self.fake_request(url)
+            if "geocoding" not in url:
+                result["daily"]["time"].extend(["2026-09-27", "2026-09-28"])
+                result["daily"]["temperature_2m_max"].extend([67, 66])
+                result["daily"]["temperature_2m_min"].extend([52, 51])
+                result["daily"]["precipitation_probability_max"].extend([30, 70])
+                result["daily"]["weather_code"].extend([2, 61])
+            return result
+
+        with patch("weather._get_json", side_effect=fake_request):
+            result = get_weather("Boston", "09-28")
+        self.assertEqual(result["date"], "2026-09-28")
+        self.assertEqual(result["forecast"]["condition"], "rain")
+
+    def test_yearless_date_can_resolve_into_next_year(self):
+        def fake_request(url):
+            result = self.fake_request(url)
+            if "geocoding" not in url:
+                result["daily"]["time"] = ["2026-12-31", "2027-01-01"]
+            return result
+
+        with patch("weather._get_json", side_effect=fake_request):
+            result = get_weather("Boston", "01-01")
+        self.assertEqual(result["date"], "2027-01-01")
+
 
 if __name__ == "__main__":
     unittest.main()

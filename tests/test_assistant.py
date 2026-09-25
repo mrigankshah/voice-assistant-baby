@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from assistant import ChatCancellation, ChatInterrupted, answer_with_history, chat, choose_model, list_models
+from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _yearless_day_from_prompt, answer_with_history, chat, choose_model, list_models
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -28,15 +28,29 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        if body["messages"][-1].get("content") == "Weather in Boston tomorrow":
+        if body["messages"][-1].get("content") in (
+            "Weather in Boston tomorrow", "Weather in Boston tomorrow with stale date"
+        ):
+            stale_date = body["messages"][-1].get("content") == "Weather in Boston tomorrow with stale date"
             events = (
-                {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "tomorrow"}}}]}, "done": False},
+                {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "2025-11-16" if stale_date else "tomorrow"}}}]}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
+        elif body["messages"][-1].get("content") == "What time is it now?":
+            events = (
+                {"message": {"tool_calls": [{"function": {"name": "get_current_datetime", "arguments": {}}}]}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
+        elif body["messages"][-1].get("content") == "Weather in Boston on September 28th":
+            events = (
+                {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "2025-09-28"}}}]}, "done": False},
                 {"message": {"content": ""}, "done": True},
             )
         elif body["messages"][-1].get("role") == "tool":
+            reply = "The time is 10:15." if body["messages"][-1]["tool_name"] == "get_current_datetime" else "Boston will be rainy tomorrow."
             events = (
-                {"message": {"content": "Boston will be "}, "done": False},
-                {"message": {"content": "rainy tomorrow."}, "done": False},
+                {"message": {"content": reply[:len(reply) // 2]}, "done": False},
+                {"message": {"content": reply[len(reply) // 2:]}, "done": False},
                 {"message": {"content": ""}, "done": True},
             )
         else:
@@ -172,7 +186,7 @@ class AssistantTests(unittest.TestCase):
             )
         weather.assert_called_once_with("Boston", "tomorrow")
         self.assertEqual(reply, "Boston will be rainy tomorrow.")
-        self.assertEqual(chunks, ["Boston will be ", "rainy tomorrow."])
+        self.assertEqual("".join(chunks), reply)
         self.assertEqual(history[-1], {"role": "assistant", "content": reply})
         tool_result = FakeOllamaHandler.requests[-1][1]["messages"][-1]
         self.assertEqual(tool_result["role"], "tool")
@@ -188,6 +202,44 @@ class AssistantTests(unittest.TestCase):
             "alpha:latest", "Hello", [], on_tool_debug=debug.append, base_url=self.base_url
         )
         self.assertEqual(debug, ["[tool] Ollama replied without requesting a tool"])
+
+    def test_tomorrow_ignores_a_stale_date_from_the_model(self):
+        debug = []
+        with patch("assistant.get_weather", return_value={"forecast": {"condition": "rain"}}) as weather:
+            answer_with_history(
+                "alpha:latest", "Weather in Boston tomorrow with stale date", [],
+                on_tool_debug=debug.append, base_url=self.base_url,
+            )
+        weather.assert_called_once_with("Boston", "tomorrow")
+        self.assertIn("using day='tomorrow'", debug[1])
+
+    def test_comparison_of_two_days_does_not_override_tool_arguments(self):
+        self.assertIsNone(_relative_day_from_prompt("Compare today and tomorrow in Boston"))
+        self.assertIsNone(_relative_day_from_prompt("Tomorrow in Boston and Saturday in New York"))
+
+    def test_yearless_month_and_day_ignores_a_stale_model_year(self):
+        debug = []
+        with patch("assistant.get_weather", return_value={"date": "2026-09-28"}) as weather:
+            answer_with_history(
+                "alpha:latest", "Weather in Boston on September 28th", [],
+                on_tool_debug=debug.append, base_url=self.base_url,
+            )
+        weather.assert_called_once_with("Boston", "09-28")
+        self.assertIn("using day='09-28'", debug[1])
+        self.assertIsNone(_yearless_day_from_prompt("September 28th, 2027"))
+        self.assertIsNone(_yearless_day_from_prompt("September 28th and October 1st"))
+
+    def test_clock_tool_returns_the_pi_clock_to_the_model(self):
+        clock = {"date": "2026-09-25", "time": "10:15:00", "weekday": "Friday", "timezone": "EDT", "utc_offset": "-0400", "iso_datetime": "2026-09-25T10:15:00-04:00"}
+        with patch("assistant.get_current_datetime", return_value=clock):
+            reply, _ = answer_with_history(
+                "alpha:latest", "What time is it now?", [], base_url=self.base_url,
+            )
+        self.assertEqual(reply, "The time is 10:15.")
+        messages = FakeOllamaHandler.requests[-1][1]["messages"]
+        self.assertIn("2026-09-25", messages[0]["content"])
+        self.assertEqual(messages[-1]["tool_name"], "get_current_datetime")
+        self.assertEqual(json.loads(messages[-1]["content"]), clock)
 
     def test_interrupt_after_weather_lookup_skips_final_model_request(self):
         cancellation = ChatCancellation()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -67,11 +68,17 @@ def get_weather(location: str = "", day: str = "today") -> dict:
     if len(location) > 120:
         raise WeatherError("The location name is too long.")
     day = day.strip().lower()
-    if day not in ("today", "tomorrow", "now"):
+    yearless_day = re.fullmatch(r"\d{2}-\d{2}", day) is not None
+    if yearless_day:
+        try:
+            date.fromisoformat(f"2000-{day}")
+        except ValueError as exc:
+            raise WeatherError("Use a valid month and day in MM-DD format.") from exc
+    elif day not in ("today", "tomorrow", "now"):
         try:
             date.fromisoformat(day)
         except ValueError as exc:
-            raise WeatherError("Use today, tomorrow, or a date like 2026-09-25.") from exc
+            raise WeatherError("Use today, tomorrow, MM-DD, or a date like 2026-09-25.") from exc
 
     geocoding = _get_json(f"{GEOCODING_URL}?{urlencode({'name': location, 'count': 1, 'language': 'en'})}")
     places = geocoding.get("results")
@@ -105,6 +112,8 @@ def get_weather(location: str = "", day: str = "today") -> dict:
         raise WeatherError("The weather service returned incomplete forecast data.")
     dates = daily["time"]
     index = 0 if day in ("today", "now") else 1 if day == "tomorrow" else -1
+    if index == -1 and yearless_day:
+        index = next((number for number, value in enumerate(dates) if value[5:] == day), -1)
     if index == -1:
         try:
             index = dates.index(day)

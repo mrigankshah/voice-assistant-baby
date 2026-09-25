@@ -41,6 +41,10 @@ export WEATHER_DEFAULT_LOCATION="Boston, Massachusetts"
 
 The weather tool covers current conditions and daily forecasts up to 16 days ahead, in Fahrenheit and mph. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant should report that instead of guessing. Weather answers require the selected Ollama model to support tool calling. [Liquid AI lists LFM2.5-1.2B-Instruct for tool calling](https://ollama.com/LiquidAI/lfm2.5-1.2b-instruct), but the final behavior still needs to be checked with the exact model installed on your Pi.
 
+The assistant also has a `get_current_datetime` tool for questions like "What time is it?" and "What's today's date?" It reads the Pi's local clock. Check `timedatectl status` on the Pi if the reported date, time, or timezone is wrong. A weather request for just "today" or "tomorrow" uses that word directly, even if the model suggests a stale calendar date.
+
+For a named month and day without a year, such as "September 28th", the weather tool finds the matching date in the returned forecast. This can resolve to the current or next calendar year. If the date is beyond the available 16-day forecast, it reports that limit. Debug mode shows when the user's month and day replace a year guessed by the model.
+
 To see what Ollama asks the Pi to do, add `--debug-tools` to either command:
 
 ```bash

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
+import re
 import sys
+from datetime import date
 from collections.abc import Callable
 from http.client import HTTPConnection, HTTPException
 from socket import SHUT_RDWR, socket
@@ -14,6 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from local_clock import get_current_datetime
 from weather import WeatherError, get_weather
 
 
@@ -29,9 +33,17 @@ WEATHER_TOOL = {
             "type": "object",
             "properties": {
                 "location": {"type": "string", "description": "City and optional state or country. Omit to use the configured default location."},
-                "day": {"type": "string", "description": "today, tomorrow, or a date in YYYY-MM-DD format. Defaults to today."},
+                "day": {"type": "string", "description": "Use today or tomorrow literally. For a named month and day without a year, use MM-DD. For a date with an explicit year, use YYYY-MM-DD. Defaults to today."},
             },
         },
+    },
+}
+CLOCK_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_current_datetime",
+        "description": "Read the current date, time, weekday, and timezone from this Raspberry Pi's system clock. Use for questions asking what time or date it is now.",
+        "parameters": {"type": "object", "properties": {}},
     },
 }
 WEATHER_INSTRUCTIONS = (
@@ -39,7 +51,22 @@ WEATHER_INSTRUCTIONS = (
     "questions; never guess current conditions or forecasts. If the tool returns an error, "
     "explain the error instead of inventing weather. If the user gives no location, "
     "call get_weather without one; it will use a configured default or tell you to ask "
-    "for a city. Do not state a weather result before the tool returns."
+    "for a city. For today or tomorrow, pass that exact word as the day; do not "
+    "turn it into a calendar date. For a month and day without a year, use MM-DD "
+    "and let the weather tool resolve the year. Use get_current_datetime for questions about "
+    "the current date or time. Do not state a tool result before the tool returns."
+)
+
+MONTH_NUMBERS = {
+    name.lower(): number
+    for number in range(1, 13)
+    for name in (calendar.month_name[number], calendar.month_abbr[number])
+}
+MONTH_NUMBERS["sept"] = 9
+MONTH_PATTERN = "|".join(sorted(MONTH_NUMBERS, key=len, reverse=True))
+YEARLESS_DATE_PATTERN = re.compile(
+    rf"\b(?P<month>{MONTH_PATTERN})\.?\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\b",
+    re.IGNORECASE,
 )
 
 
@@ -243,18 +270,61 @@ def chat(
     return reply
 
 
-def _weather_result(call: dict) -> str:
-    function = call.get("function")
-    if not isinstance(function, dict) or function.get("name") != "get_weather":
-        return json.dumps({"error": "Unknown tool request."})
-    arguments = function.get("arguments", {})
-    if not isinstance(arguments, dict) or set(arguments) - {"location", "day"}:
-        return json.dumps({"error": "Invalid weather arguments."})
+def _relative_day_from_prompt(prompt: str) -> str | None:
+    """Keep an unambiguous today/tomorrow request out of the model's date math."""
+    relative_days = re.findall(r"\b(today|tomorrow)\b", prompt, flags=re.IGNORECASE)
+    other_days = re.search(
+        r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tonight|yesterday)\b"
+        r"|\b\d{4}-\d{2}-\d{2}\b",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if len(set(day.lower() for day in relative_days)) == 1 and other_days is None:
+        return relative_days[0].lower()
+    return None
+
+
+def _yearless_day_from_prompt(prompt: str) -> str | None:
+    """Use the user's named month/day without asking the model to invent a year."""
+    if re.search(r"\b\d{4}\b", prompt):
+        return None
+    matches = list(YEARLESS_DATE_PATTERN.finditer(prompt))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    month = MONTH_NUMBERS[match.group("month").lower()]
+    day = int(match.group("day"))
     try:
-        result = get_weather(arguments.get("location", ""), arguments.get("day", "today"))
-    except WeatherError as exc:
-        result = {"error": str(exc)}
-    return json.dumps(result)
+        date(2000, month, day)
+    except ValueError:
+        return None
+    return f"{month:02d}-{day:02d}"
+
+
+def _day_from_prompt(prompt: str) -> str | None:
+    return _relative_day_from_prompt(prompt) or _yearless_day_from_prompt(prompt)
+
+
+def _tool_result(call: dict, prompt: str) -> tuple[str, str]:
+    function = call.get("function")
+    if not isinstance(function, dict):
+        return "unknown", json.dumps({"error": "Unknown tool request."})
+    name = function.get("name")
+    arguments = function.get("arguments", {})
+    if name == "get_current_datetime":
+        if arguments != {}:
+            return name, json.dumps({"error": "This clock tool takes no arguments."})
+        return name, json.dumps(get_current_datetime())
+    if name == "get_weather":
+        if not isinstance(arguments, dict) or set(arguments) - {"location", "day"}:
+            return name, json.dumps({"error": "Invalid weather arguments."})
+        day = _day_from_prompt(prompt) or arguments.get("day", "today")
+        try:
+            result = get_weather(arguments.get("location", ""), day)
+        except WeatherError as exc:
+            result = {"error": str(exc)}
+        return name, json.dumps(result)
+    return "unknown", json.dumps({"error": "Unknown tool request."})
 
 
 def answer_with_history(
@@ -268,8 +338,9 @@ def answer_with_history(
     base_url: str = OLLAMA_URL,
 ) -> tuple[str, list[dict[str, str]]]:
     user_message = {"role": "user", "content": prompt}
+    current_date = get_current_datetime()["date"]
     messages: list[dict] = [
-        {"role": "system", "content": WEATHER_INSTRUCTIONS},
+        {"role": "system", "content": f"Pi local date: {current_date}. {WEATHER_INSTRUCTIONS}"},
         *history,
         user_message,
     ]
@@ -282,7 +353,7 @@ def answer_with_history(
             on_chunk=on_chunk,
             cancellation=cancellation,
             base_url=base_url,
-            tools=[WEATHER_TOOL],
+            tools=[WEATHER_TOOL, CLOCK_TOOL],
         )
         calls = response.get("tool_calls", [])
         if not calls:
@@ -308,13 +379,20 @@ def answer_with_history(
                     f"[tool] request {name}: "
                     f"{json.dumps(arguments, ensure_ascii=False, default=str)[:1000]}"
                 )
+                if name == "get_weather" and isinstance(arguments, dict):
+                    user_day = _day_from_prompt(prompt)
+                    if user_day is not None and arguments.get("day", "today") != user_day:
+                        on_tool_debug(
+                            f"[tool] using day={user_day!r} from your words "
+                            "instead of the model's date"
+                        )
             started = monotonic()
-            result = _weather_result(call)
+            tool_name, result = _tool_result(call, prompt)
             if cancellation is not None:
                 cancellation.check()
             if on_tool_debug is not None:
                 on_tool_debug(f"[tool] result {name} ({monotonic() - started:.2f}s): {result[:2000]}")
-            messages.append({"role": "tool", "tool_name": "get_weather", "content": result})
+            messages.append({"role": "tool", "tool_name": tool_name, "content": result})
     else:
         raise OllamaError("The model requested weather too many times without answering.")
     updated_history = (history + [user_message, {"role": "assistant", "content": reply}])[
