@@ -43,6 +43,97 @@ To wait longer after a pause, run `./.venv/bin/python voice_assistant.py --pause
 
 If you set up automatic activation, `python voice_assistant.py` works too.
 
+## Diagnose microphone slowdowns on the Pi
+
+Stop the assistant and any other microphone programs, then run in the same Python
+environment you use for Moonshine:
+
+```bash
+python3 diagnose_audio.py
+```
+
+If Moonshine is in the repository's virtual environment, use
+`./.venv/bin/python diagnose_audio.py` instead. No additional Python packages are
+needed beyond your existing Moonshine installation.
+
+The default is **30 minutes of listening**, plus model loading and shutdown:
+15 minutes of Tiny Streaming with returned audio enabled, followed by 15 minutes
+in a fresh process with returned audio disabled. Both phases use the same
+instrumentation and suppress transcript printing. This isolates the cost of
+returning audio; it is not an exact reproduction of the Moonshine CLI's terminal
+rendering. Use a similar mix of short sentences, longer speech, and quiet in each
+phase. An identical audio clip played from another device gives a more repeatable
+comparison. Do not run the two phases concurrently.
+
+The controller prints status every 30 seconds and samples the worker's current
+RAM, swap allocation, CPU and thread count every second on Linux. A separate
+worker heartbeat reports audio overflow notifications, estimated audio backlog,
+transcript parsing time, processing time, and returned audio duration. CPU 100%
+means approximately one occupied core. Backlog includes audio currently being
+processed, excludes already lost microphone samples, and is approximate while
+counters are updating. Parsing measures Python conversion; processing includes
+audio ingestion, any triggered decoding, parsing, and listeners. The decode time
+reported on completed lines is not the full pipeline cost.
+
+Results go into a timestamped `diagnostics/` directory, excluded from Git:
+
+- `summary.json`: outcomes and aggregate measurements for each phase.
+- Each phase's `metrics.csv`: measurements over time.
+- Each phase's `environment.json`: versions, audio device, settings, and a source
+  fingerprint to identify the installed microphone implementation.
+- Each phase's `worker.log`: startup messages and errors; no transcript callbacks
+  print text, and the runner does not save recordings.
+
+Send back the summary and CSV files; include environment and worker logs if a
+phase fails. Ctrl+C saves partial results and stops the current worker. The
+controller enforces the time limit even if the worker is stuck, and records when
+forced termination was necessary. A startup timeout of five minutes permits
+model loading/downloads without using listening time.
+
+**If baseline stays healthy, the comparison is inconclusive.** Run longer than
+the usual time to failure. Model warmup, different speech, other programs and
+microphone noise can affect results. A growing heartbeat age means worker
+measurements may be stale; independently collected CPU/memory still help.
+
+Other experiments are selectable individually, each 30 minutes by default:
+
+| Command suffix | Experiment |
+| --- | --- |
+| `--scenario baseline` | Tiny, returned audio enabled |
+| `--scenario no-audio` | Tiny, returned audio disabled |
+| `--scenario capture` | Microphone capture and discard, no Moonshine |
+| `--scenario vad` | Moonshine VAD/segmentation, STT decoding disabled |
+| `--scenario slower` | Returned audio disabled; transcription interval 1 second |
+| `--scenario final-only` | Returned audio disabled; decode completed lines only |
+| `--scenario host-block` | Returned audio disabled; host chooses capture block size |
+| `--scenario larger-block` | Returned audio disabled; 2048 frames instead of 1024 |
+| `--scenario buffered` | Returned audio disabled; request 0.2 seconds capture latency |
+
+For example:
+
+```bash
+python3 diagnose_audio.py --scenario capture --minutes 30
+python3 diagnose_audio.py --scenario no-audio --model small --minutes 30
+python3 diagnose_audio.py --scenario no-audio --sample-rate 0 --minutes 30
+```
+
+`--sample-rate 0` selects the input device's native default rate; the normal
+request is 16000 Hz mono. Moonshine can fall back to a supported native rate,
+which is recorded in the CSV. The capture-only probe deliberately does not
+silently change rates: if 16000 is unsupported, specify the same actual rate
+shown in the Moonshine run. These tests don't add a second resampler.
+
+Use `python3 -m sounddevice` to list devices and `--device 2` (with your actual
+input index) to select one explicitly. `--latency 0.3` adjusts the buffered
+experiment only. The default device latency may already be higher than 0.2;
+compare the actual values in the CSV before interpreting that experiment.
+
+The runner instruments private Moonshine capture/parsing methods. It reports an
+error if the expected API is absent, rather than silently running an unmeasured
+test. It does not change the installed package. Buffer clearing, stream rotation,
+and a wake detector are deliberately not part of this comparison: restarting
+sessions would obscure the accumulation we are trying to measure.
+
 ## Develop on Windows
 
 Edit code in the Windows copy of this repository, then commit and push it to GitHub. Pull on the Pi to test with its installed models. Model files, recordings, and local settings stay outside Git.
