@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import call, patch
 
 from assistant import ChatCancellation, ChatInterrupted, OllamaError, answer_with_history
-from structured_assistant import ConversationHistory, ROUTER_SCHEMA
+from structured_assistant import ConversationHistory, ROUTER_SCHEMA, interpret_request
 
 
 def plan(intent, **fields):
@@ -29,6 +29,40 @@ CLOCK = {
 
 
 class StructuredAssistantTests(unittest.TestCase):
+    def test_greeting_after_weather_cannot_trigger_weather(self):
+        history = ConversationHistory(active_task={"intent": "weather", "location": "London", "day": "today"})
+        with patch("assistant._stream_chat", return_value=plan("weather")) as router, patch(
+            "assistant.chat", return_value="I'm here and ready to help."
+        ), patch("assistant.get_weather") as weather:
+            answer_with_history("local", "How are you?", history)
+        router.assert_not_called()
+        weather.assert_not_called()
+
+    def test_time_question_cannot_be_routed_to_settings(self):
+        with patch("assistant._stream_chat", return_value=plan("read_setting")) as router, patch(
+            "assistant.load_settings"
+        ) as settings:
+            reply, _ = answer_with_history("local", "What time is it?", [])
+        self.assertEqual(reply, "10:15 AM.")
+        router.assert_not_called()
+        settings.assert_not_called()
+
+    def test_unrelated_weather_action_is_rejected(self):
+        with patch("assistant._stream_chat", return_value=plan("weather")), patch("assistant.get_weather") as weather:
+            reply, _ = answer_with_history("local", "Are penguins birds?", [])
+        weather.assert_not_called()
+        self.assertIn("rephrase", reply)
+
+    def test_router_sees_schema_and_no_unrelated_active_task(self):
+        with patch("assistant._stream_chat", return_value=plan("chat")) as request:
+            interpret_request("local", "Explain gravity", {"intent": "weather", "location": "London"})
+        messages = request.call_args.args[1]
+        self.assertEqual(len(messages), 2)
+        self.assertIn("Output schema:", messages[0]["content"])
+        self.assertIn("This is a new request", messages[0]["content"])
+        self.assertNotIn("Active task for this follow-up", messages[0]["content"])
+        self.assertEqual(request.call_args.kwargs["options"]["temperature"], 0)
+
     def setUp(self):
         clock_patch = patch("assistant.get_current_datetime", return_value=CLOCK)
         self.clock = clock_patch.start()

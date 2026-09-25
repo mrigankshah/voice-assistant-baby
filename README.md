@@ -179,7 +179,29 @@ test. It does not change the installed package. Buffer clearing, stream rotation
 and a wake detector are deliberately not part of this comparison: restarting
 sessions would obscure the accumulation we are trying to measure.
 
-## Evaluate real model tool decisions
+## Evaluate the current router
+
+The assistant handles standard greetings, clock questions, and clear setting
+commands directly. Other requests go to a compact JSON interpreter with explicit
+schema instructions and examples. Only a follow-up receives the active task;
+unrelated past replies are excluded from classification. The interpreter uses
+temperature 0 and a 256-token output limit. Obvious unrelated action selections
+are rejected with a clarification question. These checks do not guarantee correct
+classification for every phrasing.
+
+To test this actual routing path on the Pi without executing workflows, run:
+
+```bash
+python3 evaluate_routing.py --repeat 3
+```
+
+Choose the installed model. The command saves `report.md`, `results.jsonl`, and
+`metadata.json` in a new `eval-results/routing-*` directory. It grades intent only;
+argument accuracy and final answer quality still require checking. The debug log
+records whether each decision came from a direct rule or the model, including
+rejected model decisions. Stop the voice assistant first for meaningful timings.
+
+## Evaluate real model tool decisions (previous architecture)
 
 Run this on the Pi with Ollama running. Stop the voice assistant first so its
 audio and model work do not distort the timing. This needs only standard Python;

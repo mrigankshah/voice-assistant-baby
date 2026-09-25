@@ -199,6 +199,7 @@ def _stream_chat(
     base_url: str = OLLAMA_URL,
     tools: list[dict] | None = None,
     format_schema: dict | None = None,
+    options: dict | None = None,
 ) -> dict:
     if cancellation is not None:
         cancellation.check()
@@ -212,6 +213,8 @@ def _stream_chat(
         payload["tools"] = tools
     if format_schema is not None:
         payload["format"] = format_schema
+    if options is not None:
+        payload["options"] = options
     body = json.dumps(payload)
     parts: list[str] = []
     thoughts: list[str] = []

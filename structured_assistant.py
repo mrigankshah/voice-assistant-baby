@@ -24,7 +24,7 @@ ROUTER_SCHEMA = {
         "setting_value": {"type": ["string", "null"]},
         "question": {"type": ["string", "null"]},
     },
-    "required": ["intent", "location", "day", "clock_part", "setting_name", "setting_value", "question"],
+    "required": ["intent"],
     "additionalProperties": False,
 }
 
@@ -38,7 +38,7 @@ ROUTER_INSTRUCTIONS = (
     "or negated action; clarify: a request that cannot be understood. "
     "A mention of weather, a city, or a setting does not by itself request an action. "
     "Never interpret 'don't', 'do not', or 'not yet' as a command to execute. "
-    "Set missing fields to null. For weather use day='today' or 'tomorrow' literally; "
+    "Omit fields that are irrelevant or not supplied. For weather use day='today' or 'tomorrow' literally; "
     "copy an explicitly spoken calendar date or month and day. "
     "Use location only for a city the user named in the latest message. "
     "Home, here, and my city mean location=null. "
@@ -47,6 +47,52 @@ ROUTER_INSTRUCTIONS = (
     "For write_setting use setting_name and setting_value; clearing a city uses an empty value. "
     "For clock use clock_part time, date, or both. Only clarify when the request itself is unclear."
 )
+
+ROUTER_EXAMPLES = (
+    ('How are you?', {"intent": "chat"}),
+    ('What time is it?', {"intent": "clock", "clock_part": "time"}),
+    ('Why does rain happen?', {"intent": "chat"}),
+    ('Will it rain in London tomorrow?', {"intent": "weather", "location": "London", "day": "tomorrow"}),
+    ('What is my default city?', {"intent": "read_setting"}),
+    ('Set my default city to London.', {"intent": "write_setting", "setting_name": "default_city", "setting_value": "London"}),
+    ("Don't change my default city to London.", {"intent": "chat"}),
+)
+
+
+def _direct_plan(prompt: str) -> dict | None:
+    """Fast paths for unambiguous commands, independent of model routing."""
+    text = prompt.strip().replace("’", "'").rstrip(".!? ")
+    part = core._simple_clock_question(text)
+    if part:
+        return {"intent": "clock", "clock_part": part}
+    if re.fullmatch(r"(?:hello|hi|hey|how are you|how are you doing|how's it going|thanks|thank you)", text, re.IGNORECASE):
+        return {"intent": "chat"}
+    command = core._simple_setting_command(text)
+    if command and len(command) == 1:
+        name, value = next(iter(command.items()))
+        if _authorized_setting_change(text, name, value):
+            return {"intent": "write_setting", "setting_name": name, "setting_value": value}
+    if re.fullmatch(
+        r"(?:what is|what's|tell me) (?:my|the) (?:saved |default )?(?:city|location|temperature unit|settings|preferences)",
+        text, re.IGNORECASE,
+    ):
+        return {"intent": "read_setting"}
+    return None
+
+
+def _supported_action(plan: dict, prompt: str, active_task: dict | None) -> bool:
+    """Reject obviously unrelated actions; this is not a semantic classifier."""
+    intent = plan["intent"]
+    if intent == "weather":
+        return bool(
+            re.search(r"\b(weather|forecast|rain|raining|snow|snowing|temperature|hot|cold|warm|sunny|umbrella|jacket)\b", prompt, re.IGNORECASE)
+            or (_is_followup(prompt, active_task) and active_task.get("intent") == "weather")
+        )
+    if intent == "clock":
+        return bool(re.search(r"\b(time|date|day|clock)\b", prompt, re.IGNORECASE))
+    if intent == "read_setting":
+        return bool(re.search(r"\b(default|saved|setting|settings|preference|preferences|configured)\b", prompt, re.IGNORECASE))
+    return True
 
 CHAT_INSTRUCTIONS = (
     "You are Baby, a helpful conversational assistant on a Raspberry Pi. "
@@ -94,18 +140,24 @@ def _say(reply: str, on_chunk: Callable[[str], None] | None) -> str:
 
 
 def _interpret(
-    model: str, prompt: str, active_task: dict | None, clock: dict,
-    history: list, *, cancellation: core.ChatCancellation | None, base_url: str,
+    model: str, prompt: str, active_task: dict | None, *,
+    cancellation: core.ChatCancellation | None, base_url: str,
 ) -> dict:
-    context = f"Pi date: {clock['date']}. Active task: {json.dumps(active_task)}."
+    context = (
+        " Active task for this follow-up: " + json.dumps(active_task)
+        if _is_followup(prompt, active_task) else " This is a new request."
+    )
+    examples = "\n".join(f"User: {text}\nJSON: {json.dumps(result)}" for text, result in ROUTER_EXAMPLES)
     messages = [
-        {"role": "system", "content": ROUTER_INSTRUCTIONS + " " + context},
-        *list(history)[-4:],
+        {"role": "system", "content": ROUTER_INSTRUCTIONS + context
+         + " Omit irrelevant fields. Output schema: " + json.dumps(ROUTER_SCHEMA)
+         + "\nExamples:\n" + examples},
         {"role": "user", "content": prompt},
     ]
     response = core._stream_chat(
         model, messages, cancellation=cancellation, base_url=base_url,
         format_schema=ROUTER_SCHEMA,
+        options={"temperature": 0, "num_predict": 256},
     )
     try:
         plan = json.loads(response["content"])
@@ -115,6 +167,11 @@ def _interpret(
         raise core.OllamaError("The model returned an invalid request type. Please try again.")
     for field in ("location", "day", "clock_part", "setting_name", "setting_value", "question"):
         if field in plan and plan[field] is not None and not isinstance(plan[field], str):
+            raise core.OllamaError("The model returned invalid request details. Please try again.")
+    if set(plan) - set(ROUTER_SCHEMA["properties"]):
+        raise core.OllamaError("The model returned unknown request fields. Please try again.")
+    for field in ("clock_part", "setting_name"):
+        if plan.get(field) not in ROUTER_SCHEMA["properties"][field]["enum"]:
             raise core.OllamaError("The model returned invalid request details. Please try again.")
     return plan
 
@@ -215,6 +272,24 @@ def _authorized_setting_change(prompt: str, name: str, value: str) -> bool:
     return value.casefold() in prompt.casefold()
 
 
+def interpret_request(model: str, prompt: str, active_task: dict | None = None, *,
+                      cancellation=None, base_url=core.OLLAMA_URL, on_tool_debug=None) -> dict:
+    """Shared by the live assistant and the routing-only model evaluation."""
+    _check(cancellation)
+    plan = _direct_plan(prompt)
+    if plan is None:
+        started = monotonic()
+        plan = _interpret(model, prompt, active_task, cancellation=cancellation, base_url=base_url)
+        _debug(on_tool_debug, f"[route] model ({monotonic() - started:.2f}s): {json.dumps(plan, ensure_ascii=False)}")
+        if not _supported_action(plan, prompt, active_task):
+            _debug(on_tool_debug, "[route] rejected action unrelated to current request")
+            plan = {"intent": "clarify", "question": "I couldn't match that to a request. Could you rephrase it?"}
+    else:
+        _debug(on_tool_debug, "[route] direct command")
+    _check(cancellation)
+    return plan
+
+
 def answer_structured(
     model: str, prompt: str, history: list[dict[str, str]], *,
     on_chunk: Callable[[str], None] | None = None,
@@ -224,8 +299,8 @@ def answer_structured(
 ) -> tuple[str, ConversationHistory]:
     _check(cancellation)
     active_task = getattr(history, "active_task", None)
-    clock = core.get_current_datetime()
-    plan = _interpret(model, prompt, active_task, clock, history, cancellation=cancellation, base_url=base_url)
+    plan = interpret_request(model, prompt, active_task, cancellation=cancellation,
+                             base_url=base_url, on_tool_debug=on_tool_debug)
     _check(cancellation)
     intent = plan["intent"]
     _debug(on_tool_debug, f"[route] {json.dumps(plan, ensure_ascii=False)}")
