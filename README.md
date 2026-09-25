@@ -1,6 +1,6 @@
 # Voice Assistant Baby
 
-The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, keep a short conversation history, and show Ollama's reply as it is generated. The assistant can also look up live weather. Spoken replies will come later.
+The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, and remember a short conversation history. Ollama first interprets each request as a small structured action. Python resolves saved settings, dates, and follow-ups, then runs the right workflow. Ordinary conversation gets a separate prompt and still streams as it is generated. Spoken replies will come later.
 
 ## Run on the Pi
 
@@ -30,7 +30,7 @@ What's the weather in Boston today?
 Will it rain in Boston tomorrow?
 ```
 
-Then try the same question by voice with "Hey Baby". The Pi asks Ollama whether to call `get_weather`; when it does, the Pi resolves the city and gets current conditions or a forecast from [Open-Meteo](https://open-meteo.com/en/docs). Location and forecast requests go to Open-Meteo over the internet. Ollama and Moonshine remain local. No weather API key or extra Python package is needed for personal use.
+Then try the same question by voice with "Hey Baby". Ollama identifies the request, and Python gets current conditions or a forecast from [Open-Meteo](https://open-meteo.com/en/docs). Location and forecast requests go to Open-Meteo over the internet. Ollama and Moonshine remain local. No weather API key or extra Python package is needed for personal use.
 
 You can set a default location on the Pi before starting either program, so "What's the weather?" works without naming a city:
 
@@ -49,22 +49,22 @@ Hey Baby, what's the weather tomorrow?
 
 Say "use Fahrenheit by default" to switch back, or "clear my default city" to require a city in each weather question. The assistant confirms each change. Preferences are saved on the Pi in `assistant_settings.json` and survive restarts; this file is excluded from Git. A saved city takes priority over `WEATHER_DEFAULT_LOCATION`.
 
-For each weather question, a city you name in that question takes priority. Otherwise, the weather tool uses your saved default city. If neither is available, it asks for a city. The assistant loads your preferences at the start of each turn, and it ignores a city the model invents in a weather tool call. With `--debug-tools`, the terminal shows when it uses the city you said or falls back to the saved default.
+For each weather question, a city you name takes priority. A follow-up such as "and tomorrow?" keeps the last weather location. "At home" uses your saved default city, and a fresh weather question without a city uses that default too. If no city is available, the assistant asks for one. Python checks locations and dates against your words before it runs the lookup. The assistant keeps this active task in memory alongside the conversation history, and `/reset` clears it.
 
-The weather tool covers current conditions and daily forecasts up to 16 days ahead. Temperature defaults to Fahrenheit but can be changed to Celsius. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant should report that instead of guessing. Weather answers require the selected Ollama model to support tool calling. [Liquid AI lists LFM2.5-1.2B-Instruct for tool calling](https://ollama.com/LiquidAI/lfm2.5-1.2b-instruct), but the final behavior still needs to be checked with the exact model installed on your Pi.
+The weather workflow covers current conditions and daily forecasts up to 16 days ahead. Temperature defaults to Fahrenheit but can be changed to Celsius. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant reports that instead of guessing. The selected Ollama model must support structured JSON output. Its interpretation quality still needs testing with the exact model installed on your Pi.
 
-The assistant also has a `get_current_datetime` tool. "What time is it?" gives only the time, "What's today's date?" gives only the date, and "What's the date and time?" gives both. These common questions read the Pi's clock directly. Check `timedatectl status` on the Pi if the reported date, time, or timezone is wrong. A weather request for just "today" or "tomorrow" uses that word directly, even if the model suggests a stale calendar date.
+"What time is it?" gives only the time, "What's today's date?" gives only the date, and "What's the date and time?" gives both. These questions read the Pi's clock directly after interpretation. Check `timedatectl status` on the Pi if the reported date, time, or timezone is wrong. A weather request for just "today" or "tomorrow" uses that word directly, even if the model suggests a stale calendar date.
 
-For a named month and day without a year, such as "September 28th", the weather tool finds the matching date in the returned forecast. This can resolve to the current or next calendar year. If the date is beyond the available 16-day forecast, it reports that limit. Debug mode shows when the user's month and day replace a year guessed by the model.
+For a named month and day without a year, such as "September 28th", the weather workflow finds the matching date in the returned forecast. This can resolve to the current or next calendar year. If the date is beyond the available 16-day forecast, it reports that limit.
 
-To see what Ollama asks the Pi to do, add `--debug-tools` to either command:
+To see how a request was interpreted and executed, add `--debug-tools` to either command:
 
 ```bash
 ./.venv/bin/python assistant.py --debug-tools
 ./.venv/bin/python voice_assistant.py --debug-tools
 ```
 
-Debug lines show the requested tool and arguments, the returned data or error, and lookup time. They appear separately from the assistant's answer. If Ollama answers without requesting a tool, the terminal says so. Leave the flag off for normal use.
+Debug lines show the structured request (`[route]`), the chosen location and date, and the tool result or error. They appear separately from the assistant's answer. Leave the flag off for normal use.
 
 ## Try the microphone
 
@@ -80,7 +80,7 @@ After each reply, you have **15 seconds** to start a follow-up without repeating
 
 Moonshine still listens and transcribes locally while waiting, but ordinary conversation is ignored and is not sent to Ollama. The assistant disables returned audio data from Moonshine's transcripts because it only needs the recognized words; this avoids the slowdown measured in the Pi diagnostics. During an active conversation, nearby speech is treated as directed at the assistant; this does not identify individual speakers.
 
-The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript and shows Ollama's reply as it arrives. If the reply is going in the wrong direction, start speaking again: the current answer stops, and your new question replaces it. The interrupted answer is not kept in conversation history. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken. The same response chunks can later feed speech output without waiting for the whole reply.
+The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript, interprets the request, and streams ordinary chat replies. Routine weather, clock, and settings replies are formatted directly after their work completes. If the reply is going in the wrong direction, start speaking again: the current answer stops, and your new question replaces it. The interrupted answer is not kept in conversation history. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken.
 
 To change the follow-up window, run `./.venv/bin/python voice_assistant.py --conversation-timeout 5` (seconds). This is separate from the short pause within a question.
 
@@ -223,8 +223,10 @@ with `--temperature 0.1`. Thinking is also left at the model default; use
 tokens per case. `token_limit` indicates a truncated response, not a reliable
 tool decision; increase `--num-predict` or use a supported non-thinking mode.
 
-This is a **first-decision benchmark**, before the app's direct command handlers
-and argument corrections. It does not execute a complete tool loop, grade answer
+This is a **baseline of the former direct tool-calling design**. The application
+now uses a structured interpreter in `structured_assistant.py`; this evaluator
+still sends the former tool list and prompt so the old results remain comparable.
+It does not measure the new interpreter or execute a complete tool loop, grade answer
 text, or test speech recognition. A no-tool pass only means the model didn't call
 a tool, so inspect the reply for invented facts. A weather decision may omit the
 city or explicitly provide the configured default; an unrelated invented city

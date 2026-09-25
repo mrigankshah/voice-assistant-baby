@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _simple_setting_command, _tool_result, _weather_location_from_prompt, _yearless_day_from_prompt, answer_with_history, chat, choose_model, list_models
+from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _simple_setting_command, _tool_result, _weather_location_from_prompt, _yearless_day_from_prompt, _answer_with_history_legacy as answer_with_history, chat, choose_model, list_models
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):

@@ -198,6 +198,7 @@ def _stream_chat(
     cancellation: ChatCancellation | None = None,
     base_url: str = OLLAMA_URL,
     tools: list[dict] | None = None,
+    format_schema: dict | None = None,
 ) -> dict:
     if cancellation is not None:
         cancellation.check()
@@ -209,6 +210,8 @@ def _stream_chat(
     payload = {"model": model, "messages": messages, "stream": True}
     if tools is not None:
         payload["tools"] = tools
+    if format_schema is not None:
+        payload["format"] = format_schema
     body = json.dumps(payload)
     parts: list[str] = []
     thoughts: list[str] = []
@@ -492,7 +495,7 @@ def _tool_result(call: dict, prompt: str) -> tuple[str, str]:
     return "unknown", json.dumps({"error": "Unknown tool request."})
 
 
-def answer_with_history(
+def _answer_with_history_legacy(
     model: str,
     prompt: str,
     history: list[dict[str, str]],
@@ -627,6 +630,25 @@ def answer_with_history(
         -MAX_HISTORY_MESSAGES:
     ]
     return reply, updated_history
+
+
+def answer_with_history(
+    model: str,
+    prompt: str,
+    history: list[dict[str, str]],
+    *,
+    on_chunk: Callable[[str], None] | None = None,
+    on_tool_debug: Callable[[str], None] | None = None,
+    cancellation: ChatCancellation | None = None,
+    base_url: str = OLLAMA_URL,
+) -> tuple[str, list[dict[str, str]]]:
+    """Use a structured request interpreter followed by Python workflows."""
+    from structured_assistant import answer_structured
+
+    return answer_structured(
+        model, prompt, history, on_chunk=on_chunk,
+        on_tool_debug=on_tool_debug, cancellation=cancellation, base_url=base_url,
+    )
 
 
 def choose_model(models: list[str], *, read=input, write=print) -> str:
