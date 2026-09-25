@@ -12,9 +12,33 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+from weather import WeatherError, get_weather
+
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 MAX_HISTORY_MESSAGES = 12
+MAX_TOOL_ROUNDS = 3
+WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get current weather or a forecast for a city. Use for weather, temperature, or rain questions. Location may be omitted to use a configured default.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "City and optional state or country. Omit to use the configured default location."},
+                "day": {"type": "string", "description": "today, tomorrow, or a date in YYYY-MM-DD format. Defaults to today."},
+            },
+        },
+    },
+}
+WEATHER_INSTRUCTIONS = (
+    "You can request get_weather for live weather information. Always use it for weather "
+    "questions; never guess current conditions or forecasts. If the tool returns an error, "
+    "explain the error instead of inventing weather. If the user gives no location, "
+    "call get_weather without one; it will use a configured default or tell you to ask "
+    "for a city. Do not state a weather result before the tool returns."
+)
 
 
 class OllamaError(Exception):
@@ -106,14 +130,15 @@ def list_models(*, base_url: str = OLLAMA_URL) -> list[str]:
     )
 
 
-def chat(
+def _stream_chat(
     model: str,
-    messages: list[dict[str, str]],
+    messages: list[dict],
     *,
     on_chunk: Callable[[str], None] | None = None,
     cancellation: ChatCancellation | None = None,
     base_url: str = OLLAMA_URL,
-) -> str:
+    tools: list[dict] | None = None,
+) -> dict:
     if cancellation is not None:
         cancellation.check()
     parsed_url = urlsplit(base_url)
@@ -121,8 +146,13 @@ def chat(
         raise OllamaError("Ollama chat requires a local HTTP address.")
     connection = HTTPConnection(parsed_url.hostname, parsed_url.port, timeout=300)
     path = f"{parsed_url.path.rstrip('/')}/api/chat"
-    body = json.dumps({"model": model, "messages": messages, "stream": True})
+    payload = {"model": model, "messages": messages, "stream": True}
+    if tools is not None:
+        payload["tools"] = tools
+    body = json.dumps(payload)
     parts: list[str] = []
+    thoughts: list[str] = []
+    tool_calls: list[dict] = []
     finished = False
     active_socket: socket | None = None
     try:
@@ -156,9 +186,19 @@ def chat(
             content = message.get("content") if message else None
             if content is not None and not isinstance(content, str):
                 raise OllamaError("Ollama returned unexpected chat content.")
+            thinking = message.get("thinking") if message else None
+            if thinking is not None and not isinstance(thinking, str):
+                raise OllamaError("Ollama returned unexpected thinking content.")
+            if thinking:
+                thoughts.append(thinking)
+            calls = message.get("tool_calls") if message else None
+            if calls is not None:
+                if not isinstance(calls, list) or any(not isinstance(call, dict) for call in calls):
+                    raise OllamaError("Ollama returned unexpected tool calls.")
+                tool_calls.extend(calls)
             if content:
                 parts.append(content)
-                if on_chunk is not None:
+                if on_chunk is not None and not tool_calls:
                     on_chunk(content)
             if event.get("done") is True:
                 finished = True
@@ -176,10 +216,43 @@ def chat(
         cancellation.check()
     if not finished:
         raise OllamaError("Ollama stopped streaming before the reply finished.")
-    reply = "".join(parts).strip()
+    message = {"role": "assistant", "content": "".join(parts)}
+    if thoughts:
+        message["thinking"] = "".join(thoughts)
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+    return message
+
+
+def chat(
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    on_chunk: Callable[[str], None] | None = None,
+    cancellation: ChatCancellation | None = None,
+    base_url: str = OLLAMA_URL,
+) -> str:
+    """Stream a plain text chat response without tools."""
+    reply = _stream_chat(
+        model, messages, on_chunk=on_chunk, cancellation=cancellation, base_url=base_url
+    )["content"].strip()
     if not reply:
         raise OllamaError("Ollama returned no text. This model may not support chat.")
     return reply
+
+
+def _weather_result(call: dict) -> str:
+    function = call.get("function")
+    if not isinstance(function, dict) or function.get("name") != "get_weather":
+        return json.dumps({"error": "Unknown tool request."})
+    arguments = function.get("arguments", {})
+    if not isinstance(arguments, dict) or set(arguments) - {"location", "day"}:
+        return json.dumps({"error": "Invalid weather arguments."})
+    try:
+        result = get_weather(arguments.get("location", ""), arguments.get("day", "today"))
+    except WeatherError as exc:
+        result = {"error": str(exc)}
+    return json.dumps(result)
 
 
 def answer_with_history(
@@ -189,9 +262,45 @@ def answer_with_history(
     *,
     on_chunk: Callable[[str], None] | None = None,
     cancellation: ChatCancellation | None = None,
+    base_url: str = OLLAMA_URL,
 ) -> tuple[str, list[dict[str, str]]]:
     user_message = {"role": "user", "content": prompt}
-    reply = chat(model, history + [user_message], on_chunk=on_chunk, cancellation=cancellation)
+    messages: list[dict] = [
+        {"role": "system", "content": WEATHER_INSTRUCTIONS},
+        *history,
+        user_message,
+    ]
+    for round_number in range(MAX_TOOL_ROUNDS + 1):
+        if cancellation is not None:
+            cancellation.check()
+        response = _stream_chat(
+            model,
+            messages,
+            on_chunk=on_chunk,
+            cancellation=cancellation,
+            base_url=base_url,
+            tools=[WEATHER_TOOL],
+        )
+        calls = response.get("tool_calls", [])
+        if not calls:
+            reply = response["content"].strip()
+            if not reply:
+                raise OllamaError("Ollama returned no text. This model may not support chat or tools.")
+            break
+        if round_number == MAX_TOOL_ROUNDS:
+            raise OllamaError("The model requested weather too many times without answering.")
+        if len(calls) > 4:
+            raise OllamaError("The model requested too many weather lookups at once.")
+        messages.append(response)
+        for call in calls:
+            if cancellation is not None:
+                cancellation.check()
+            result = _weather_result(call)
+            if cancellation is not None:
+                cancellation.check()
+            messages.append({"role": "tool", "tool_name": "get_weather", "content": result})
+    else:
+        raise OllamaError("The model requested weather too many times without answering.")
     updated_history = (history + [user_message, {"role": "assistant", "content": reply}])[
         -MAX_HISTORY_MESSAGES:
     ]

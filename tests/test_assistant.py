@@ -4,6 +4,7 @@ import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
 
 from assistant import ChatCancellation, ChatInterrupted, answer_with_history, chat, choose_model, list_models
 
@@ -27,11 +28,23 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        events = (
-            {"message": {"content": "Hello "}, "done": False},
-            {"message": {"content": "from Ollama"}, "done": False},
-            {"message": {"content": ""}, "done": True},
-        )
+        if body["messages"][-1].get("content") == "Weather in Boston tomorrow":
+            events = (
+                {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "tomorrow"}}}]}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
+        elif body["messages"][-1].get("role") == "tool":
+            events = (
+                {"message": {"content": "Boston will be "}, "done": False},
+                {"message": {"content": "rainy tomorrow."}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
+        else:
+            events = (
+                {"message": {"content": "Hello "}, "done": False},
+                {"message": {"content": "from Ollama"}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
         try:
             if body["messages"][-1]["content"] == "Slow reply":
                 self.wfile.write((json.dumps(events[0]) + "\n").encode())
@@ -138,20 +151,47 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(result, ["interrupted"])
 
     def test_answer_remembers_previous_turn(self):
-        from unittest.mock import patch
-
-        with patch("assistant.chat", return_value="Hello from Ollama") as fake_chat:
-            _, history = answer_with_history("alpha:latest", "Hello", [])
-            answer_with_history("alpha:latest", "Follow up", history)
-
+        _, history = answer_with_history("alpha:latest", "Hello", [], base_url=self.base_url)
+        answer_with_history("alpha:latest", "Follow up", history, base_url=self.base_url)
         self.assertEqual(
-            fake_chat.call_args.args[1],
+            FakeOllamaHandler.requests[-1][1]["messages"][-3:],
             [
                 {"role": "user", "content": "Hello"},
                 {"role": "assistant", "content": "Hello from Ollama"},
                 {"role": "user", "content": "Follow up"},
             ],
         )
+
+    def test_weather_tool_runs_and_final_answer_streams(self):
+        chunks = []
+        with patch("assistant.get_weather", return_value={"forecast": {"condition": "rain"}}) as weather:
+            reply, history = answer_with_history(
+                "alpha:latest", "Weather in Boston tomorrow", [],
+                on_chunk=chunks.append, base_url=self.base_url,
+            )
+        weather.assert_called_once_with("Boston", "tomorrow")
+        self.assertEqual(reply, "Boston will be rainy tomorrow.")
+        self.assertEqual(chunks, ["Boston will be ", "rainy tomorrow."])
+        self.assertEqual(history[-1], {"role": "assistant", "content": reply})
+        tool_result = FakeOllamaHandler.requests[-1][1]["messages"][-1]
+        self.assertEqual(tool_result["role"], "tool")
+        self.assertEqual(json.loads(tool_result["content"]), {"forecast": {"condition": "rain"}})
+
+    def test_interrupt_after_weather_lookup_skips_final_model_request(self):
+        cancellation = ChatCancellation()
+        before = len(FakeOllamaHandler.requests)
+
+        def interrupted_lookup(*_args):
+            cancellation.cancel()
+            return {"forecast": {"condition": "rain"}}
+
+        with patch("assistant.get_weather", side_effect=interrupted_lookup):
+            with self.assertRaises(ChatInterrupted):
+                answer_with_history(
+                    "alpha:latest", "Weather in Boston tomorrow", [],
+                    cancellation=cancellation, base_url=self.base_url,
+                )
+        self.assertEqual(len(FakeOllamaHandler.requests) - before, 1)
 
 
 if __name__ == "__main__":

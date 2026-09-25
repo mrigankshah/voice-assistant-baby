@@ -1,6 +1,6 @@
 # Voice Assistant Baby
 
-The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, keep a short conversation history, and show Ollama's reply as it is generated. Spoken replies will come later.
+The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, keep a short conversation history, and show Ollama's reply as it is generated. The assistant can also look up live weather. Spoken replies will come later.
 
 ## Run on the Pi
 
@@ -20,6 +20,26 @@ The Pi can chat by typed text or listen through Moonshine and print a reply from
 3. Choose a model number and type a message. Use `/model` to switch models, `/reset` to clear the conversation, or `/quit` to exit.
 
 The script uses Ollama's local API at `http://127.0.0.1:11434`. That HTTP connection stays on the Pi; it does not send your speech or prompts to the internet. You do not need to leave an interactive `ollama run <model-name>` session open. If `ollama list` cannot connect, start the Ollama service using your Pi's existing setup before running the script.
+
+## Ask about the weather
+
+Choose your installed LFM2.5-1.2B-Instruct model and try a typed question first:
+
+```text
+What's the weather in Boston today?
+Will it rain in Boston tomorrow?
+```
+
+Then try the same question by voice with "Hey Baby". The Pi asks Ollama whether to call `get_weather`; when it does, the Pi resolves the city and gets current conditions or a forecast from [Open-Meteo](https://open-meteo.com/en/docs). Location and forecast requests go to Open-Meteo over the internet. Ollama and Moonshine remain local. No weather API key or extra Python package is needed for personal use.
+
+You can set a default location on the Pi before starting either program, so "What's the weather?" works without naming a city:
+
+```bash
+export WEATHER_DEFAULT_LOCATION="Boston, Massachusetts"
+./.venv/bin/python voice_assistant.py
+```
+
+The weather tool covers current conditions and daily forecasts up to 16 days ahead, in Fahrenheit and mph. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant should report that instead of guessing. Weather answers require the selected Ollama model to support tool calling. [Liquid AI lists LFM2.5-1.2B-Instruct for tool calling](https://ollama.com/LiquidAI/lfm2.5-1.2b-instruct), but the final behavior still needs to be checked with the exact model installed on your Pi.
 
 ## Try the microphone
 
