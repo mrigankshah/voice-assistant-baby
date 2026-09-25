@@ -41,6 +41,15 @@ export WEATHER_DEFAULT_LOCATION="Boston, Massachusetts"
 
 The weather tool covers current conditions and daily forecasts up to 16 days ahead, in Fahrenheit and mph. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant should report that instead of guessing. Weather answers require the selected Ollama model to support tool calling. [Liquid AI lists LFM2.5-1.2B-Instruct for tool calling](https://ollama.com/LiquidAI/lfm2.5-1.2b-instruct), but the final behavior still needs to be checked with the exact model installed on your Pi.
 
+To see what Ollama asks the Pi to do, add `--debug-tools` to either command:
+
+```bash
+./.venv/bin/python assistant.py --debug-tools
+./.venv/bin/python voice_assistant.py --debug-tools
+```
+
+Debug lines show the requested tool and arguments, the returned data or error, and lookup time. They appear separately from the assistant's answer. If Ollama answers without requesting a tool, the terminal says so. Leave the flag off for normal use.
+
 ## Try the microphone
 
 Your existing Moonshine command is `moonshine-voice mic --language en --model-arch 4`. Confirm it transcribes speech, then stop it with Ctrl+C. Since Moonshine is installed in the repo's `.venv`, run:

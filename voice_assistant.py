@@ -113,6 +113,10 @@ def main() -> int:
         default=1.5,
         help="Extra quiet time after a finished speech segment before replying (default: 1.5).",
     )
+    parser.add_argument(
+        "--debug-tools", action="store_true",
+        help="Print tool requests and results while chatting.",
+    )
     args = parser.parse_args()
     if not isfinite(args.pause_seconds) or args.pause_seconds < 0:
         parser.error("--pause-seconds must be a finite number that is zero or greater")
@@ -162,6 +166,7 @@ def main() -> int:
     turn_number = 0
     active_turn: int | None = None
     active_cancellation: ChatCancellation | None = None
+    reply_started = False
 
     def run_reply(
         turn: int,
@@ -173,9 +178,15 @@ def main() -> int:
             cancellation.check()
             reply_events.put(("chunk", turn, chunk))
 
+        def on_tool_debug(event: str) -> None:
+            cancellation.check()
+            reply_events.put(("tool_debug", turn, event))
+
         try:
             _, updated_history = answer_with_history(
-                model, prompt, prior_history, on_chunk=on_chunk, cancellation=cancellation
+                model, prompt, prior_history, on_chunk=on_chunk,
+                on_tool_debug=on_tool_debug if args.debug_tools else None,
+                cancellation=cancellation,
             )
         except ChatInterrupted:
             return
@@ -230,7 +241,7 @@ def main() -> int:
                             print("\n[I'm listening. What's your question?]")
                         continue
                     print(f"\nYou: {prompt}")
-                    print("\nAssistant: ", end="", flush=True)
+                    reply_started = False
                     turn_number += 1
                     active_turn = turn_number
                     active_cancellation = ChatCancellation()
@@ -248,12 +259,22 @@ def main() -> int:
                 if turn != active_turn:
                     continue
                 if kind == "chunk":
+                    if not reply_started:
+                        print("\nAssistant: ", end="", flush=True)
+                        reply_started = True
                     print(payload, end="", flush=True)
+                elif kind == "tool_debug":
+                    if reply_started:
+                        print()
+                        reply_started = False
+                    print(payload, flush=True)
                 elif kind == "done":
                     history = payload
                     active_turn = None
                     active_cancellation = None
-                    print()
+                    if reply_started:
+                        print()
+                        reply_started = False
                     conversation.wait_for_followup(monotonic())
                 elif kind == "error":
                     active_turn = None

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from collections.abc import Callable
 from http.client import HTTPConnection, HTTPException
 from socket import SHUT_RDWR, socket
 from threading import Event, Lock
+from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
@@ -261,6 +263,7 @@ def answer_with_history(
     history: list[dict[str, str]],
     *,
     on_chunk: Callable[[str], None] | None = None,
+    on_tool_debug: Callable[[str], None] | None = None,
     cancellation: ChatCancellation | None = None,
     base_url: str = OLLAMA_URL,
 ) -> tuple[str, list[dict[str, str]]]:
@@ -283,6 +286,8 @@ def answer_with_history(
         )
         calls = response.get("tool_calls", [])
         if not calls:
+            if on_tool_debug is not None and round_number == 0:
+                on_tool_debug("[tool] Ollama replied without requesting a tool")
             reply = response["content"].strip()
             if not reply:
                 raise OllamaError("Ollama returned no text. This model may not support chat or tools.")
@@ -295,9 +300,20 @@ def answer_with_history(
         for call in calls:
             if cancellation is not None:
                 cancellation.check()
+            function = call.get("function", {})
+            name = function.get("name", "unknown") if isinstance(function, dict) else "unknown"
+            arguments = function.get("arguments") if isinstance(function, dict) else None
+            if on_tool_debug is not None:
+                on_tool_debug(
+                    f"[tool] request {name}: "
+                    f"{json.dumps(arguments, ensure_ascii=False, default=str)[:1000]}"
+                )
+            started = monotonic()
             result = _weather_result(call)
             if cancellation is not None:
                 cancellation.check()
+            if on_tool_debug is not None:
+                on_tool_debug(f"[tool] result {name} ({monotonic() - started:.2f}s): {result[:2000]}")
             messages.append({"role": "tool", "tool_name": "get_weather", "content": result})
     else:
         raise OllamaError("The model requested weather too many times without answering.")
@@ -323,6 +339,12 @@ def choose_model(models: list[str], *, read=input, write=print) -> str:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Chat with a local Ollama model.")
+    parser.add_argument(
+        "--debug-tools", action="store_true",
+        help="Print tool requests and results while chatting.",
+    )
+    args = parser.parse_args()
     print("Looking for models on this Pi...")
     try:
         model = choose_model(list_models())
@@ -352,9 +374,25 @@ def main() -> int:
                 continue
 
             try:
-                print("\nAssistant: ", end="", flush=True)
+                reply_started = False
+
+                def show_chunk(chunk: str) -> None:
+                    nonlocal reply_started
+                    if not reply_started:
+                        print("\nAssistant: ", end="", flush=True)
+                        reply_started = True
+                    print(chunk, end="", flush=True)
+
+                def show_tool_debug(event: str) -> None:
+                    nonlocal reply_started
+                    if reply_started:
+                        print()
+                        reply_started = False
+                    print(event, flush=True)
+
                 _, history = answer_with_history(
-                    model, prompt, history, on_chunk=lambda chunk: print(chunk, end="", flush=True)
+                    model, prompt, history, on_chunk=show_chunk,
+                    on_tool_debug=show_tool_debug if args.debug_tools else None,
                 )
             except OllamaError as exc:
                 print(f"\nError: {exc}", file=sys.stderr)

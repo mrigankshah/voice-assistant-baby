@@ -164,10 +164,11 @@ class AssistantTests(unittest.TestCase):
 
     def test_weather_tool_runs_and_final_answer_streams(self):
         chunks = []
+        debug = []
         with patch("assistant.get_weather", return_value={"forecast": {"condition": "rain"}}) as weather:
             reply, history = answer_with_history(
                 "alpha:latest", "Weather in Boston tomorrow", [],
-                on_chunk=chunks.append, base_url=self.base_url,
+                on_chunk=chunks.append, on_tool_debug=debug.append, base_url=self.base_url,
             )
         weather.assert_called_once_with("Boston", "tomorrow")
         self.assertEqual(reply, "Boston will be rainy tomorrow.")
@@ -176,6 +177,17 @@ class AssistantTests(unittest.TestCase):
         tool_result = FakeOllamaHandler.requests[-1][1]["messages"][-1]
         self.assertEqual(tool_result["role"], "tool")
         self.assertEqual(json.loads(tool_result["content"]), {"forecast": {"condition": "rain"}})
+        self.assertIn('request get_weather: {"location": "Boston", "day": "tomorrow"}', debug[0])
+        self.assertIn('result get_weather', debug[1])
+        self.assertIn('"condition": "rain"', debug[1])
+        self.assertEqual(len(debug), 2)
+
+    def test_debug_reports_when_model_did_not_request_a_tool(self):
+        debug = []
+        answer_with_history(
+            "alpha:latest", "Hello", [], on_tool_debug=debug.append, base_url=self.base_url
+        )
+        self.assertEqual(debug, ["[tool] Ollama replied without requesting a tool"])
 
     def test_interrupt_after_weather_lookup_skips_final_model_request(self):
         cancellation = ChatCancellation()
