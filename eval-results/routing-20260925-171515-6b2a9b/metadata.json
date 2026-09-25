@@ -1,0 +1,454 @@
+{
+  "model": "LiquidAI/lfm2.5-1.2b-instruct:latest",
+  "repeat": 3,
+  "cases": [
+    {
+      "id": "weather-default-today",
+      "prompt": "What's the weather?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-default-tomorrow",
+      "prompt": "What's the weather tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-rain",
+      "prompt": "Will it rain tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-explicit-london",
+      "prompt": "What's the weather in London today?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London",
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-explicit-sf",
+      "prompt": "Will it rain in San Francisco tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "San Francisco",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-home",
+      "prompt": "What's the weather like at home?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-changed-default",
+      "default_city": "Chicago",
+      "prompt": "What's the weather tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-implicit-request",
+      "prompt": "Do I need an umbrella in London tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-followup-day",
+      "history": [
+        {
+          "role": "user",
+          "content": "What's the weather in London today?"
+        },
+        {
+          "role": "assistant",
+          "content": "In London today, it's cloudy and 18 degrees Celsius."
+        }
+      ],
+      "prompt": "And tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-followup-city",
+      "history": [
+        {
+          "role": "user",
+          "content": "Will it rain in London tomorrow?"
+        },
+        {
+          "role": "assistant",
+          "content": "London has a 70 percent chance of rain tomorrow."
+        }
+      ],
+      "prompt": "What about Paris?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "Paris",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-return-home",
+      "history": [
+        {
+          "role": "user",
+          "content": "What's the weather in London?"
+        },
+        {
+          "role": "assistant",
+          "content": "London is cloudy today."
+        }
+      ],
+      "prompt": "And what's the weather back home today?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "clock-time",
+      "prompt": "What time is it?",
+      "expected": [
+        {
+          "name": "get_current_datetime",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "clock-date",
+      "prompt": "What's today's date?",
+      "expected": [
+        {
+          "name": "get_current_datetime",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "clock-both",
+      "prompt": "Tell me the date and time.",
+      "expected": [
+        {
+          "name": "get_current_datetime",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "settings-city",
+      "prompt": "Set my default city to London.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "default_city": "London"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-celsius",
+      "prompt": "Use Celsius by default.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "temperature_unit": "celsius"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-fahrenheit",
+      "prompt": "Switch to Fahrenheit by default.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "temperature_unit": "fahrenheit"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-clear",
+      "prompt": "Clear my default city.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "default_city": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-read",
+      "prompt": "What's my default city?",
+      "expected": [
+        {
+          "name": "get_weather_preferences",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "chat-greeting",
+      "prompt": "Hello, how are you?",
+      "expected": []
+    },
+    {
+      "id": "chat-rain-explanation",
+      "prompt": "Why does rain happen?",
+      "expected": []
+    },
+    {
+      "id": "chat-fog-explanation",
+      "prompt": "Why is San Francisco often foggy?",
+      "expected": []
+    },
+    {
+      "id": "chat-time-concept",
+      "prompt": "How many minutes are in an hour?",
+      "expected": []
+    },
+    {
+      "id": "chat-date-concept",
+      "prompt": "What is a leap year?",
+      "expected": []
+    },
+    {
+      "id": "chat-city-fact",
+      "prompt": "What country is London in?",
+      "expected": []
+    },
+    {
+      "id": "chat-weather-capability",
+      "prompt": "Can you look up weather forecasts? Just tell me whether you can.",
+      "expected": []
+    },
+    {
+      "id": "chat-settings-capability",
+      "prompt": "Explain how default city settings work. Don't change anything.",
+      "expected": []
+    },
+    {
+      "id": "chat-negated-weather",
+      "prompt": "Don't look up the weather. Tell me a joke.",
+      "expected": []
+    },
+    {
+      "id": "chat-negated-setting",
+      "prompt": "Don't change my default city to London. Leave my settings alone.",
+      "expected": []
+    },
+    {
+      "id": "chat-hypothetical-setting",
+      "prompt": "If I asked you to change my default city to London, would you be able to? Don't do it yet.",
+      "expected": []
+    },
+    {
+      "id": "chat-after-weather",
+      "history": [
+        {
+          "role": "user",
+          "content": "What's the weather in London?"
+        },
+        {
+          "role": "assistant",
+          "content": "London is cloudy today."
+        }
+      ],
+      "prompt": "Thanks. Tell me a joke about a cat.",
+      "expected": []
+    },
+    {
+      "id": "chat-mention-weather",
+      "prompt": "I like rainy weather. Tell me a story about a rainy day.",
+      "expected": []
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "intent": {
+        "type": "string",
+        "enum": [
+          "chat",
+          "weather",
+          "clock",
+          "read_setting",
+          "write_setting",
+          "clarify"
+        ]
+      },
+      "location": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "day": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "clock_part": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "time",
+          "date",
+          "both",
+          null
+        ]
+      },
+      "setting_name": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "default_city",
+          "temperature_unit",
+          null
+        ]
+      },
+      "setting_value": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "question": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "additionalProperties": false
+  },
+  "instructions": "Classify the latest user message into one intent and extract only details the user actually said. Return a compact JSON object matching the schema. Do not answer the user in this step. weather: current conditions, forecast, rain likelihood, or whether to take an umbrella; clock: ask for the current date or time; read_setting: ask for saved city or unit; write_setting: explicitly ask to save or clear a lasting city or unit preference; chat: greeting, explanation, story, joke, capability question, hypothetical action, or negated action; clarify: a request that cannot be understood. A mention of weather, a city, or a setting does not by itself request an action. Never interpret 'don't', 'do not', or 'not yet' as a command to execute. Omit fields that are irrelevant or not supplied. For weather use day='today' or 'tomorrow' literally; copy an explicitly spoken calendar date or month and day. Use location only for a city the user named in the latest message. Home, here, and my city mean location=null. For a follow-up such as 'and tomorrow?' or 'what about Paris?', select the active task's intent and supply only details newly stated; Python will inherit the rest. For write_setting use setting_name and setting_value; clearing a city uses an empty value. For clock use clock_part time, date, or both. Only clarify when the request itself is unclear.",
+  "examples": [
+    [
+      "How are you?",
+      {
+        "intent": "chat"
+      }
+    ],
+    [
+      "What time is it?",
+      {
+        "intent": "clock",
+        "clock_part": "time"
+      }
+    ],
+    [
+      "Why does rain happen?",
+      {
+        "intent": "chat"
+      }
+    ],
+    [
+      "Will it rain in London tomorrow?",
+      {
+        "intent": "weather",
+        "location": "London",
+        "day": "tomorrow"
+      }
+    ],
+    [
+      "What is my default city?",
+      {
+        "intent": "read_setting"
+      }
+    ],
+    [
+      "Set my default city to London.",
+      {
+        "intent": "write_setting",
+        "setting_name": "default_city",
+        "setting_value": "London"
+      }
+    ],
+    [
+      "Don't change my default city to London.",
+      {
+        "intent": "chat"
+      }
+    ]
+  ]
+}
