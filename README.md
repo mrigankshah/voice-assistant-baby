@@ -49,6 +49,8 @@ Hey Baby, what's the weather tomorrow?
 
 Say "use Fahrenheit by default" to switch back, or "clear my default city" to require a city in each weather question. The assistant confirms each change. Preferences are saved on the Pi in `assistant_settings.json` and survive restarts; this file is excluded from Git. A saved city takes priority over `WEATHER_DEFAULT_LOCATION`.
 
+For each weather question, a city you name in that question takes priority. Otherwise, the weather tool uses your saved default city. If neither is available, it asks for a city. The assistant loads your preferences at the start of each turn, and it ignores a city the model invents in a weather tool call. With `--debug-tools`, the terminal shows when it uses the city you said or falls back to the saved default.
+
 The weather tool covers current conditions and daily forecasts up to 16 days ahead. Temperature defaults to Fahrenheit but can be changed to Celsius. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant should report that instead of guessing. Weather answers require the selected Ollama model to support tool calling. [Liquid AI lists LFM2.5-1.2B-Instruct for tool calling](https://ollama.com/LiquidAI/lfm2.5-1.2b-instruct), but the final behavior still needs to be checked with the exact model installed on your Pi.
 
 The assistant also has a `get_current_datetime` tool. "What time is it?" gives only the time, "What's today's date?" gives only the date, and "What's the date and time?" gives both. These common questions read the Pi's clock directly. Check `timedatectl status` on the Pi if the reported date, time, or timezone is wrong. A weather request for just "today" or "tomorrow" uses that word directly, even if the model suggests a stale calendar date.
@@ -176,6 +178,68 @@ error if the expected API is absent, rather than silently running an unmeasured
 test. It does not change the installed package. Buffer clearing, stream rotation,
 and a wake detector are deliberately not part of this comparison: restarting
 sessions would obscure the accumulation we are trying to measure.
+
+## Evaluate real model tool decisions
+
+Run this on the Pi with Ollama running. Stop the voice assistant first so its
+audio and model work do not distort the timing. This needs only standard Python;
+it uses the real installed LLM but never executes tools or changes preferences.
+
+Start with a five-case check and select your LFM model from the numbered list:
+
+```bash
+python3 evaluate_tools.py --limit 5
+```
+
+Then run all 32 starter cases three times to measure inconsistent decisions:
+
+```bash
+python3 evaluate_tools.py --repeat 3
+```
+
+Each case is an independent conversation; follow-up cases include a fixed
+conversation history. The fixture date is September 25, 2026, the default city
+is Boston (Chicago in one case), and the temperature unit is Celsius. Your own
+saved settings are not used. Cases cover weather, clock requests, preferences,
+follow-ups, negations, hypothetical requests, and ordinary chat.
+
+The terminal prints the output folder. Read its `report.md` for failures and
+timings, `results.jsonl` for full model replies, and `metadata.json` for model
+parameters, templates, test prompts, and Ollama version. Results under
+`eval-results/` are excluded from Git. Ctrl+C preserves completed cases and a
+partial report. Run duration depends on model speed; this is not a fixed-duration
+test. Each request has a 300-second timeout.
+
+To compare models you have already installed, use their exact names from
+`ollama list`, repeating `--model` for each model:
+
+```bash
+python3 evaluate_tools.py --model "FIRST-MODEL-NAME" --model "SECOND-MODEL-NAME" --repeat 3
+```
+
+Start with installed sampling defaults. Later, make a separate controlled run
+with `--temperature 0.1`. Thinking is also left at the model default; use
+`--think off` only if the model supports it. The default generation cap is 512
+tokens per case. `token_limit` indicates a truncated response, not a reliable
+tool decision; increase `--num-predict` or use a supported non-thinking mode.
+
+This is a **first-decision benchmark**, before the app's direct command handlers
+and argument corrections. It does not execute a complete tool loop, grade answer
+text, or test speech recognition. A no-tool pass only means the model didn't call
+a tool, so inspect the reply for invented facts. A weather decision may omit the
+city or explicitly provide the configured default; an unrelated invented city
+fails. Timings include loading and thinking and measure the complete first
+response, not time to the first streamed token. The raw results include Ollama's
+separate timing fields. Compare accuracy as well as speed.
+
+Add your real failure transcripts to `tool_eval_cases.json` (or a separate file
+passed with `--cases`). Each case has an `id`, `prompt`, optional `history`, and
+`expected` list of calls with `name` and `arguments`. An empty list means no tool
+should be called. Expected argument matching is strict except for whitespace,
+capitalization, and default weather city/day values; inspect failures for valid
+alternative phrasing before treating the score as definitive. Once the baseline
+is collected, use these same cases to evaluate a structured request interpreter
+before enabling it in the voice assistant.
 
 ## Develop on Windows
 

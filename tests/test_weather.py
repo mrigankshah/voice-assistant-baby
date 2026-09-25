@@ -47,6 +47,13 @@ class WeatherTests(unittest.TestCase):
         self.assertEqual(result["temperature_unit"], "F")
         self.assertNotIn("wind_speed_mph", result["current"])
 
+    def test_explicit_location_overrides_saved_default(self):
+        self.settings.return_value = {"default_city": "Boston", "temperature_unit": "fahrenheit"}
+        with patch("weather._get_json", side_effect=self.fake_request) as fetch:
+            get_weather("London")
+        geocoding_query = parse_qs(urlsplit(fetch.call_args_list[0].args[0]).query)
+        self.assertEqual(geocoding_query["name"], ["London"])
+
     def test_missing_location_gives_clear_error(self):
         with self.assertRaisesRegex(WeatherError, "No location"):
             get_weather()

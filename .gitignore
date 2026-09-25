@@ -5,4 +5,5 @@ __pycache__/
 models/
 recordings/
 diagnostics/
+eval-results/
 assistant_settings.json

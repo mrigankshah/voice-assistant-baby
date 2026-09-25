@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _simple_setting_command, _tool_result, _yearless_day_from_prompt, answer_with_history, chat, choose_model, list_models
+from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _simple_setting_command, _tool_result, _weather_location_from_prompt, _yearless_day_from_prompt, answer_with_history, chat, choose_model, list_models
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -34,6 +34,13 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
             stale_date = body["messages"][-1].get("content") == "Weather in Boston tomorrow with stale date"
             events = (
                 {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "2025-11-16" if stale_date else "tomorrow"}}}]}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
+        elif body["messages"][-1].get("content") in (
+            "What's the weather tomorrow?", "What's the weather in London tomorrow?"
+        ):
+            events = (
+                {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "San Francisco", "day": "tomorrow"}}}]}, "done": False},
                 {"message": {"content": ""}, "done": True},
             )
         elif body["messages"][-1].get("content") == "Please report the current clock reading":
@@ -200,6 +207,40 @@ class AssistantTests(unittest.TestCase):
         self.assertIn('result get_weather', debug[1])
         self.assertIn('"condition": "rain"', debug[1])
         self.assertEqual(len(debug), 2)
+
+    def test_weather_location_defaults_when_model_invents_a_city(self):
+        debug = []
+        defaults = {"default_city": "Boston", "temperature_unit": "celsius"}
+        with patch("assistant.load_settings", return_value=defaults), patch(
+            "assistant.get_weather", return_value={"location": "Boston", "temperature_unit": "C"}
+        ) as weather:
+            answer_with_history(
+                "alpha:latest", "What's the weather tomorrow?", [],
+                on_tool_debug=debug.append, base_url=self.base_url,
+            )
+        weather.assert_called_once_with("", "tomorrow")
+        messages = FakeOllamaHandler.requests[-1][1]["messages"]
+        self.assertIn("city='Boston'", messages[0]["content"])
+        self.assertIn("temperature_unit=celsius", messages[0]["content"])
+        self.assertTrue(any("using the saved default city" in line for line in debug))
+
+    def test_explicit_city_overrides_default_and_wrong_model_city(self):
+        defaults = {"default_city": "Boston", "temperature_unit": "celsius"}
+        with patch("assistant.load_settings", return_value=defaults), patch(
+            "assistant.get_weather", return_value={"location": "London", "temperature_unit": "C"}
+        ) as weather:
+            answer_with_history(
+                "alpha:latest", "What's the weather in London tomorrow?", [], base_url=self.base_url,
+            )
+        weather.assert_called_once_with("London", "tomorrow")
+
+    def test_weather_location_ignores_time_and_unit_phrases(self):
+        self.assertEqual(_weather_location_from_prompt("Weather in the morning in Boston?", "San Francisco"), "Boston")
+        self.assertEqual(_weather_location_from_prompt("Weather for tomorrow in Celsius?", "San Francisco"), "")
+        self.assertEqual(_weather_location_from_prompt("Weather in my city?", "San Francisco"), "")
+        self.assertEqual(_weather_location_from_prompt("What's the weather at home?", "San Francisco"), "")
+        self.assertEqual(_weather_location_from_prompt("Weather in the city of Boston?", "San Francisco"), "Boston")
+        self.assertEqual(_weather_location_from_prompt("Will it rain in NYC?", "San Francisco"), "New York City")
 
     def test_debug_reports_when_model_did_not_request_a_tool(self):
         debug = []

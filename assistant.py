@@ -73,9 +73,10 @@ WEATHER_INSTRUCTIONS = (
     "You can request get_weather for live weather information. Always use it for weather "
     "questions; never guess current conditions or forecasts. Do not include wind "
     "speed in weather answers. If the tool returns an error, "
-    "explain the error instead of inventing weather. If the user gives no location, "
-    "call get_weather without one; it will use a configured default or tell you to ask "
-    "for a city. For today or tomorrow, pass that exact word as the day; do not "
+    "explain the error instead of inventing weather. Use a city the user actually "
+    "named; if none was named, call get_weather without a location so it uses the "
+    "saved default. Never assume San Francisco or another city. For today or "
+    "tomorrow, pass that exact word as the day; do not "
     "turn it into a calendar date. For a month and day without a year, use MM-DD "
     "and let the weather tool resolve the year. Use get_current_datetime for questions about "
     "the current date or time. If asked only for time, answer with time only; if asked "
@@ -335,6 +336,45 @@ def _day_from_prompt(prompt: str) -> str | None:
     return _relative_day_from_prompt(prompt) or _yearless_day_from_prompt(prompt)
 
 
+def _weather_location_from_prompt(prompt: str, suggested_location: object) -> str:
+    """Use a named place from the user's words, otherwise use the saved default."""
+    non_locations = {
+        "today", "tomorrow", "tonight", "yesterday", "now", "later", "next",
+        "morning", "afternoon", "evening", "night", "weekend", "week",
+        "my", "our", "your", "this", "here", "there", "home", "local",
+        "nearby", "me", "default",
+        "celsius", "celcius", "fahrenheit", "minutes", "hours", "days",
+    }
+    months = set(MONTH_NUMBERS)
+    for marker in re.finditer(r"\b(?:in|for|at|near|around)\s+", prompt, re.IGNORECASE):
+        phrase = prompt[marker.end():]
+        phrase = re.split(
+            r"[?!]|\b(?:today|tomorrow|tonight|yesterday|right now|"
+            r"on|during|after|before|next|this|in|for|at)\b",
+            phrase,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip(" ,.;:")
+        words = re.findall(r"[a-z0-9]+", phrase.casefold())
+        if not words:
+            continue
+        if words[0].isdigit() or words[0] in non_locations or words[0] in months:
+            continue
+        if words[0] == "the" and len(words) > 1:
+            if words[1] in {"city", "area"} and len(words) > 3 and words[2] == "of":
+                phrase = phrase.split(" ", 3)[3]
+            elif words[1] in non_locations | {"city", "area"}:
+                continue
+        aliases = {"nyc": "New York City", "la": "Los Angeles", "sf": "San Francisco"}
+        return aliases.get(phrase.casefold(), phrase)
+
+    if isinstance(suggested_location, str):
+        city = suggested_location.split(",", 1)[0].strip()
+        if city and re.search(rf"\b{re.escape(city)}\b", prompt, re.IGNORECASE):
+            return suggested_location
+    return ""
+
+
 def _simple_setting_command(prompt: str) -> dict[str, str] | None:
     """Handle clear spoken preference commands without depending on model behavior."""
     text = prompt.strip().rstrip(".!? ")
@@ -443,8 +483,9 @@ def _tool_result(call: dict, prompt: str) -> tuple[str, str]:
         if not isinstance(arguments, dict) or set(arguments) - {"location", "day"}:
             return name, json.dumps({"error": "Invalid weather arguments."})
         day = _day_from_prompt(prompt) or arguments.get("day", "today")
+        location = _weather_location_from_prompt(prompt, arguments.get("location", ""))
         try:
-            result = get_weather(arguments.get("location", ""), day)
+            result = get_weather(location, day)
         except WeatherError as exc:
             result = {"error": str(exc)}
         return name, json.dumps(result)
@@ -513,8 +554,15 @@ def answer_with_history(
         ]
         return reply, updated_history
     current_date = get_current_datetime()["date"]
+    try:
+        weather_defaults = load_settings()
+        default_city = weather_defaults["default_city"] or "not set"
+        default_unit = weather_defaults["temperature_unit"]
+        defaults_context = f"Saved weather defaults: city={default_city!r}, temperature_unit={default_unit}. "
+    except SettingsError:
+        defaults_context = "Saved weather defaults could not be read. "
     messages: list[dict] = [
-        {"role": "system", "content": f"Pi local date: {current_date}. {WEATHER_INSTRUCTIONS}"},
+        {"role": "system", "content": f"Pi local date: {current_date}. {defaults_context}{WEATHER_INSTRUCTIONS}"},
         *history,
         user_message,
     ]
@@ -554,6 +602,12 @@ def answer_with_history(
                     f"{json.dumps(arguments, ensure_ascii=False, default=str)[:1000]}"
                 )
                 if name == "get_weather" and isinstance(arguments, dict):
+                    user_location = _weather_location_from_prompt(prompt, arguments.get("location", ""))
+                    if arguments.get("location", "") != user_location:
+                        if user_location:
+                            on_tool_debug(f"[tool] using city from your words: {user_location!r}")
+                        else:
+                            on_tool_debug("[tool] no city in your question; using the saved default city")
                     user_day = _day_from_prompt(prompt)
                     if user_day is not None and arguments.get("day", "today") != user_day:
                         on_tool_debug(
