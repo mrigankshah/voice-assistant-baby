@@ -151,6 +151,7 @@ def main() -> int:
         MicTranscriber()
         .language("en")
         .model_arch(ModelArch.SMALL_STREAMING)
+        .options({"return_audio_data": "false"})
         .on_line(on_line)
     )
     mic.add_listener(SpeechActivity())
