@@ -1,0 +1,15 @@
+{
+  "interrupted": false,
+  "models": {
+    "LiquidAI/lfm2.5-1.2b-instruct:latest": {
+      "completed": 5,
+      "counts": {
+        "wrong_tools": 3,
+        "missing_tool": 2
+      },
+      "pass_rate": 0.0,
+      "median_seconds": 7.75,
+      "p95_seconds": 9.436
+    }
+  }
+}

@@ -1,0 +1,438 @@
+{
+  "started_utc": "2026-09-25T18:48:48.652505+00:00",
+  "models": [
+    "LiquidAI/lfm2.5-1.2b-instruct:latest"
+  ],
+  "repeat": 3,
+  "options": {
+    "num_predict": 512
+  },
+  "think": "default",
+  "base_url": "http://127.0.0.1:11434",
+  "cases_sha256": "675f5374e7fee91fb10b1cde549a08a98f6b56a23bd10d03800ad7b4215990ed",
+  "cases": [
+    {
+      "id": "weather-default-today",
+      "prompt": "What's the weather?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-default-tomorrow",
+      "prompt": "What's the weather tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-rain",
+      "prompt": "Will it rain tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-explicit-london",
+      "prompt": "What's the weather in London today?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London",
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-explicit-sf",
+      "prompt": "Will it rain in San Francisco tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "San Francisco",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-home",
+      "prompt": "What's the weather like at home?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-changed-default",
+      "default_city": "Chicago",
+      "prompt": "What's the weather tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-implicit-request",
+      "prompt": "Do I need an umbrella in London tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-followup-day",
+      "history": [
+        {
+          "role": "user",
+          "content": "What's the weather in London today?"
+        },
+        {
+          "role": "assistant",
+          "content": "In London today, it's cloudy and 18 degrees Celsius."
+        }
+      ],
+      "prompt": "And tomorrow?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "London",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-followup-city",
+      "history": [
+        {
+          "role": "user",
+          "content": "Will it rain in London tomorrow?"
+        },
+        {
+          "role": "assistant",
+          "content": "London has a 70 percent chance of rain tomorrow."
+        }
+      ],
+      "prompt": "What about Paris?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "location": "Paris",
+            "day": "tomorrow"
+          }
+        }
+      ]
+    },
+    {
+      "id": "weather-return-home",
+      "history": [
+        {
+          "role": "user",
+          "content": "What's the weather in London?"
+        },
+        {
+          "role": "assistant",
+          "content": "London is cloudy today."
+        }
+      ],
+      "prompt": "And what's the weather back home today?",
+      "expected": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "day": "today"
+          }
+        }
+      ]
+    },
+    {
+      "id": "clock-time",
+      "prompt": "What time is it?",
+      "expected": [
+        {
+          "name": "get_current_datetime",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "clock-date",
+      "prompt": "What's today's date?",
+      "expected": [
+        {
+          "name": "get_current_datetime",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "clock-both",
+      "prompt": "Tell me the date and time.",
+      "expected": [
+        {
+          "name": "get_current_datetime",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "settings-city",
+      "prompt": "Set my default city to London.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "default_city": "London"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-celsius",
+      "prompt": "Use Celsius by default.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "temperature_unit": "celsius"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-fahrenheit",
+      "prompt": "Switch to Fahrenheit by default.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "temperature_unit": "fahrenheit"
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-clear",
+      "prompt": "Clear my default city.",
+      "expected": [
+        {
+          "name": "set_weather_preferences",
+          "arguments": {
+            "default_city": ""
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-read",
+      "prompt": "What's my default city?",
+      "expected": [
+        {
+          "name": "get_weather_preferences",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "id": "chat-greeting",
+      "prompt": "Hello, how are you?",
+      "expected": []
+    },
+    {
+      "id": "chat-rain-explanation",
+      "prompt": "Why does rain happen?",
+      "expected": []
+    },
+    {
+      "id": "chat-fog-explanation",
+      "prompt": "Why is San Francisco often foggy?",
+      "expected": []
+    },
+    {
+      "id": "chat-time-concept",
+      "prompt": "How many minutes are in an hour?",
+      "expected": []
+    },
+    {
+      "id": "chat-date-concept",
+      "prompt": "What is a leap year?",
+      "expected": []
+    },
+    {
+      "id": "chat-city-fact",
+      "prompt": "What country is London in?",
+      "expected": []
+    },
+    {
+      "id": "chat-weather-capability",
+      "prompt": "Can you look up weather forecasts? Just tell me whether you can.",
+      "expected": []
+    },
+    {
+      "id": "chat-settings-capability",
+      "prompt": "Explain how default city settings work. Don't change anything.",
+      "expected": []
+    },
+    {
+      "id": "chat-negated-weather",
+      "prompt": "Don't look up the weather. Tell me a joke.",
+      "expected": []
+    },
+    {
+      "id": "chat-negated-setting",
+      "prompt": "Don't change my default city to London. Leave my settings alone.",
+      "expected": []
+    },
+    {
+      "id": "chat-hypothetical-setting",
+      "prompt": "If I asked you to change my default city to London, would you be able to? Don't do it yet.",
+      "expected": []
+    },
+    {
+      "id": "chat-after-weather",
+      "history": [
+        {
+          "role": "user",
+          "content": "What's the weather in London?"
+        },
+        {
+          "role": "assistant",
+          "content": "London is cloudy today."
+        }
+      ],
+      "prompt": "Thanks. Tell me a joke about a cat.",
+      "expected": []
+    },
+    {
+      "id": "chat-mention-weather",
+      "prompt": "I like rainy weather. Tell me a story about a rainy day.",
+      "expected": []
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather or a forecast for a city. Use for weather, temperature, or rain questions. Location may be omitted to use a configured default.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "City and optional state or country. Omit to use the configured default location."
+            },
+            "day": {
+              "type": "string",
+              "description": "Use today or tomorrow literally. For a named month and day without a year, use MM-DD. For a date with an explicit year, use YYYY-MM-DD. Defaults to today."
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_current_datetime",
+        "description": "Read the current date and time from this Raspberry Pi's system clock. Use for current time or date questions, and answer with only the part the user requested.",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "set_weather_preferences",
+        "description": "Save a default city or default temperature unit for future weather questions. Use only when the user asks to change a lasting preference.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "default_city": {
+              "type": "string",
+              "description": "City and optional state/country. Empty string clears the default city."
+            },
+            "temperature_unit": {
+              "type": "string",
+              "enum": [
+                "celsius",
+                "fahrenheit"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather_preferences",
+        "description": "Read the saved default city and default temperature unit.",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    }
+  ],
+  "system_instructions": "You can request get_weather for live weather information. Always use it for weather questions; never guess current conditions or forecasts. Do not include wind speed in weather answers. If the tool returns an error, explain the error instead of inventing weather. Use a city the user actually named; if none was named, call get_weather without a location so it uses the saved default. Never assume San Francisco or another city. For today or tomorrow, pass that exact word as the day; do not turn it into a calendar date. For a month and day without a year, use MM-DD and let the weather tool resolve the year. Use get_current_datetime for questions about the current date or time. If asked only for time, answer with time only; if asked only for date, answer with date only. Give both only when both were requested. Use set_weather_preferences when the user asks to change a default city or temperature unit, and get_weather_preferences when asked about those settings. Never claim a setting changed unless that tool succeeds. Do not change a default for a one-time weather question. Do not state a tool result before the tool returns.",
+  "ollama_version": {
+    "version": "0.34.2"
+  },
+  "model_info": {
+    "LiquidAI/lfm2.5-1.2b-instruct:latest": {
+      "details": {
+        "parent_model": "LiquidAI/lfm2.5-1.2b-instruct:q4_k_m",
+        "format": "gguf",
+        "family": "lfm2",
+        "families": [
+          "lfm2"
+        ],
+        "parameter_size": "1.2B",
+        "quantization_level": "Q4_K_M"
+      },
+      "parameters": "repeat_penalty                 1.05\nstop                           \"<|im_start|>\"\nstop                           \"<|im_end|>\"\nstop                           \"<|startoftext|>\"\ntemperature                    0.1\ntop_k                          50",
+      "template": "{{- bos_token -}}\n{%- set keep_past_thinking = keep_past_thinking | default(false) -%}\n{%- set ns = namespace(system_prompt=\"\") -%}\n{%- if messages[0][\"role\"] == \"system\" -%}\n    {%- set ns.system_prompt = messages[0][\"content\"] -%}\n    {%- set messages = messages[1:] -%}\n{%- endif -%}\n{%- if tools -%}\n    {%- set ns.system_prompt = ns.system_prompt + (\"\\n\" if ns.system_prompt else \"\") + \"List of tools: [\" -%}\n    {%- for tool in tools -%}\n        {%- if tool is not string -%}\n            {%- set tool = tool | tojson -%}\n        {%- endif -%}\n        {%- set ns.system_prompt = ns.system_prompt + tool -%}\n        {%- if not loop.last -%}\n            {%- set ns.system_prompt = ns.system_prompt + \", \" -%}\n        {%- endif -%}\n    {%- endfor -%}\n    {%- set ns.system_prompt = ns.system_prompt + \"]\" -%}\n{%- endif -%}\n{%- if ns.system_prompt -%}\n    {{- \"<|im_start|>system\\n\" + ns.system_prompt + \"<|im_end|>\\n\" -}}\n{%- endif -%}\n{%- set ns.last_assistant_index = -1 -%}\n{%- for message in messages -%}\n    {%- if message[\"role\"] == \"assistant\" -%}\n        {%- set ns.last_assistant_index = loop.index0 -%}\n    {%- endif -%}\n{%- endfor -%}\n{%- for message in messages -%}\n    {{- \"<|im_start|>\" + message[\"role\"] + \"\\n\" -}}\n    {%- set content = message[\"content\"] -%}\n    {%- if content is not string -%}\n        {%- set content = content | tojson -%}\n    {%- endif -%}\n    {%- if message[\"role\"] == \"assistant\" and not keep_past_thinking and loop.index0 != ns.last_assistant_index -%}\n        {%- if \"</think>\" in content -%}\n            {%- set content = content.split(\"</think>\")[-1] | trim -%}\n        {%- endif -%}\n    {%- endif -%}\n    {{- content + \"<|im_end|>\\n\" -}}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{- \"<|im_start|>assistant\\n\" -}}\n{%- endif -%}",
+      "capabilities": [
+        "tools",
+        "thinking",
+        "completion"
+      ]
+    }
+  }
+}

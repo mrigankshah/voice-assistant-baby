@@ -1,0 +1,159 @@
+# Tool decision evaluation
+
+This grades the first model decision, before app corrections. No tools were executed.
+A pass for a no-tool case only means no tool was called; review the answer text separately.
+Timings are complete first responses, including any model loading and thinking. They are not time to first spoken word.
+Results use fixed test preferences and a fixed date, not your personal settings.
+
+| Model | Decisions passed | Median | P95 |
+| --- | --- | --- | --- |
+| LiquidAI/lfm2.5-1.2b-instruct:latest | 60/96 | 6.64s | 9.46s |
+
+## Failures
+
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-default-today / repeat 1: wrong_tools**
+  - User: What's the weather?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-default-tomorrow / repeat 1: wrong_tools**
+  - User: What's the weather tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-rain / repeat 1: wrong_tools**
+  - User: Will it rain tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-explicit-london / repeat 1: wrong_tools**
+  - User: What's the weather in London today?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-explicit-sf / repeat 1: missing_tool**
+  - User: Will it rain in San Francisco tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "San Francisco", "day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-home / repeat 1: wrong_tools**
+  - User: What's the weather like at home?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-changed-default / repeat 1: wrong_tools**
+  - User: What's the weather tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-implicit-request / repeat 1: missing_tool**
+  - User: Do I need an umbrella in London tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-followup-day / repeat 1: wrong_arguments**
+  - User: And tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_weather", "arguments": {"day": "2026-09-26"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-followup-city / repeat 1: wrong_arguments**
+  - User: What about Paris?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "Paris", "day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_weather", "arguments": {"location": "Paris", "day": "2026-09-26"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / chat-greeting / repeat 1: unnecessary_tool**
+  - User: Hello, how are you?
+  - Expected: `[]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / chat-negated-setting / repeat 1: unnecessary_tool**
+  - User: Don't change my default city to London. Leave my settings alone.
+  - Expected: `[]`
+  - Actual: `[{"name": "set_weather_preferences", "arguments": {"default_city": "London"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-default-today / repeat 2: wrong_tools**
+  - User: What's the weather?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-default-tomorrow / repeat 2: wrong_tools**
+  - User: What's the weather tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-rain / repeat 2: missing_tool**
+  - User: Will it rain tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-explicit-london / repeat 2: wrong_tools**
+  - User: What's the weather in London today?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-explicit-sf / repeat 2: missing_tool**
+  - User: Will it rain in San Francisco tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "San Francisco", "day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-home / repeat 2: wrong_tools**
+  - User: What's the weather like at home?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-changed-default / repeat 2: wrong_tools**
+  - User: What's the weather tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-implicit-request / repeat 2: missing_tool**
+  - User: Do I need an umbrella in London tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-followup-day / repeat 2: wrong_arguments**
+  - User: And tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_weather", "arguments": {"day": "2026-09-26"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-followup-city / repeat 2: wrong_arguments**
+  - User: What about Paris?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "Paris", "day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_weather", "arguments": {"location": "Paris", "day": "2026-09-26"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / chat-greeting / repeat 2: unnecessary_tool**
+  - User: Hello, how are you?
+  - Expected: `[]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / chat-negated-setting / repeat 2: unnecessary_tool**
+  - User: Don't change my default city to London. Leave my settings alone.
+  - Expected: `[]`
+  - Actual: `[{"name": "set_weather_preferences", "arguments": {"default_city": "London"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-default-today / repeat 3: wrong_tools**
+  - User: What's the weather?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-default-tomorrow / repeat 3: wrong_tools**
+  - User: What's the weather tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-rain / repeat 3: missing_tool**
+  - User: Will it rain tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-explicit-london / repeat 3: wrong_tools**
+  - User: What's the weather in London today?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-explicit-sf / repeat 3: missing_tool**
+  - User: Will it rain in San Francisco tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "San Francisco", "day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-home / repeat 3: wrong_tools**
+  - User: What's the weather like at home?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "today"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-changed-default / repeat 3: wrong_tools**
+  - User: What's the weather tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-implicit-request / repeat 3: missing_tool**
+  - User: Do I need an umbrella in London tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "tomorrow"}}]`
+  - Actual: `[]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-followup-day / repeat 3: wrong_arguments**
+  - User: And tomorrow?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "London", "day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_weather", "arguments": {"day": "09-25"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / weather-followup-city / repeat 3: wrong_arguments**
+  - User: What about Paris?
+  - Expected: `[{"name": "get_weather", "arguments": {"location": "Paris", "day": "tomorrow"}}]`
+  - Actual: `[{"name": "get_weather", "arguments": {"location": "Paris", "day": "2026-09-26"}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / chat-greeting / repeat 3: unnecessary_tool**
+  - User: Hello, how are you?
+  - Expected: `[]`
+  - Actual: `[{"name": "get_current_datetime", "arguments": {}}]`
+- **LiquidAI/lfm2.5-1.2b-instruct:latest / chat-negated-setting / repeat 3: unnecessary_tool**
+  - User: Don't change my default city to London. Leave my settings alone.
+  - Expected: `[]`
+  - Actual: `[{"name": "set_weather_preferences", "arguments": {"default_city": "London"}}]`
+
+Full prompts, responses, errors, and Ollama timings are in results.jsonl.
