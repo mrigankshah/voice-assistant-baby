@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
+
+from settings import SettingsError, load_settings
 
 
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -62,9 +63,13 @@ def get_weather(location: str = "", day: str = "today") -> dict:
     """Return current conditions and one daily forecast in the location's time zone."""
     if not isinstance(location, str) or not isinstance(day, str):
         raise WeatherError("Location and day must be text.")
-    location = location.strip() or os.environ.get("WEATHER_DEFAULT_LOCATION", "").strip()
+    try:
+        settings = load_settings()
+    except SettingsError as exc:
+        raise WeatherError(str(exc)) from exc
+    location = location.strip() or settings["default_city"]
     if not location:
-        raise WeatherError("No location was given. Ask the user for a city or set WEATHER_DEFAULT_LOCATION.")
+        raise WeatherError("No location was given. Ask the user for a city or set a default city.")
     if len(location) > 120:
         raise WeatherError("The location name is too long.")
     day = day.strip().lower()
@@ -100,10 +105,9 @@ def get_weather(location: str = "", day: str = "today") -> dict:
         "longitude": longitude,
         "timezone": "auto",
         "forecast_days": 16,
-        "temperature_unit": "fahrenheit",
-        "wind_speed_unit": "mph",
+        "temperature_unit": settings["temperature_unit"],
         "precipitation_unit": "inch",
-        "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m",
+        "current": "temperature_2m,apparent_temperature,weather_code",
         "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code",
     }
     forecast = _get_json(f"{FORECAST_URL}?{urlencode(parameters)}")
@@ -131,7 +135,7 @@ def get_weather(location: str = "", day: str = "today") -> dict:
         "location": place_name,
         "timezone": forecast.get("timezone"),
         "date": dates[index],
-        "temperature_unit": "F",
+        "temperature_unit": "C" if settings["temperature_unit"] == "celsius" else "F",
         "forecast": {
             "high": daily_value("temperature_2m_max"),
             "low": daily_value("temperature_2m_min"),
@@ -145,7 +149,6 @@ def get_weather(location: str = "", day: str = "today") -> dict:
             "observed_at": current.get("time"),
             "temperature": current.get("temperature_2m"),
             "feels_like": current.get("apparent_temperature"),
-            "wind_speed_mph": current.get("wind_speed_10m"),
             "condition": _condition(current.get("weather_code")),
         }
     return result

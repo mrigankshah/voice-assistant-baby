@@ -6,7 +6,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
-from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _yearless_day_from_prompt, answer_with_history, chat, choose_model, list_models
+from assistant import ChatCancellation, ChatInterrupted, _relative_day_from_prompt, _simple_setting_command, _tool_result, _yearless_day_from_prompt, answer_with_history, chat, choose_model, list_models
 
 
 class FakeOllamaHandler(BaseHTTPRequestHandler):
@@ -36,7 +36,7 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
                 {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "2025-11-16" if stale_date else "tomorrow"}}}]}, "done": False},
                 {"message": {"content": ""}, "done": True},
             )
-        elif body["messages"][-1].get("content") == "What time is it now?":
+        elif body["messages"][-1].get("content") == "Please report the current clock reading":
             events = (
                 {"message": {"tool_calls": [{"function": {"name": "get_current_datetime", "arguments": {}}}]}, "done": False},
                 {"message": {"content": ""}, "done": True},
@@ -44,6 +44,11 @@ class FakeOllamaHandler(BaseHTTPRequestHandler):
         elif body["messages"][-1].get("content") == "Weather in Boston on September 28th":
             events = (
                 {"message": {"tool_calls": [{"function": {"name": "get_weather", "arguments": {"location": "Boston", "day": "2025-09-28"}}}]}, "done": False},
+                {"message": {"content": ""}, "done": True},
+            )
+        elif body["messages"][-1].get("content") == "Remember New York for future weather":
+            events = (
+                {"message": {"tool_calls": [{"function": {"name": "set_weather_preferences", "arguments": {"default_city": "New York"}}}]}, "done": False},
                 {"message": {"content": ""}, "done": True},
             )
         elif body["messages"][-1].get("role") == "tool":
@@ -233,13 +238,92 @@ class AssistantTests(unittest.TestCase):
         clock = {"date": "2026-09-25", "time": "10:15:00", "weekday": "Friday", "timezone": "EDT", "utc_offset": "-0400", "iso_datetime": "2026-09-25T10:15:00-04:00"}
         with patch("assistant.get_current_datetime", return_value=clock):
             reply, _ = answer_with_history(
-                "alpha:latest", "What time is it now?", [], base_url=self.base_url,
+                "alpha:latest", "Please report the current clock reading", [], base_url=self.base_url,
             )
         self.assertEqual(reply, "The time is 10:15.")
         messages = FakeOllamaHandler.requests[-1][1]["messages"]
         self.assertIn("2026-09-25", messages[0]["content"])
         self.assertEqual(messages[-1]["tool_name"], "get_current_datetime")
         self.assertEqual(json.loads(messages[-1]["content"]), clock)
+
+    def test_direct_clock_answers_only_requested_parts(self):
+        clock = {"date": "2026-09-25", "time": "10:15:00", "weekday": "Friday", "timezone": "EDT", "utc_offset": "-0400", "iso_datetime": "2026-09-25T10:15:00-04:00"}
+        before = len(FakeOllamaHandler.requests)
+        debug = []
+        with patch("assistant.get_current_datetime", return_value=clock):
+            time_reply, _ = answer_with_history(
+                "alpha:latest", "What time is it?", [],
+                on_tool_debug=debug.append, base_url=self.base_url,
+            )
+            date_reply, _ = answer_with_history(
+                "alpha:latest", "What's today's date?", [], base_url=self.base_url,
+            )
+            both_reply, _ = answer_with_history(
+                "alpha:latest", "What's the date and time?", [], base_url=self.base_url,
+            )
+        self.assertEqual(len(FakeOllamaHandler.requests), before)
+        self.assertEqual(time_reply, "10:15 AM.")
+        self.assertEqual(date_reply, "September 25, 2026.")
+        self.assertEqual(both_reply, "10:15 AM on September 25, 2026.")
+        self.assertIn('"time": "10:15:00"', debug[1])
+        self.assertNotIn('"date":', debug[1])
+
+    def test_clock_tool_shares_only_requested_part_for_other_phrasings(self):
+        clock = {"date": "2026-09-25", "time": "10:15:00", "weekday": "Friday", "timezone": "EDT", "utc_offset": "-0400", "iso_datetime": "2026-09-25T10:15:00-04:00"}
+        call = {"function": {"name": "get_current_datetime", "arguments": {}}}
+        with patch("assistant.get_current_datetime", return_value=clock):
+            _, time_result = _tool_result(call, "Could you tell me the time?")
+            _, date_result = _tool_result(call, "Could you tell me the date?")
+        self.assertEqual(json.loads(time_result), {"time": "10:15:00", "timezone": "EDT"})
+        self.assertEqual(json.loads(date_result), {"date": "2026-09-25", "weekday": "Friday"})
+
+    def test_spoken_setting_commands_save_and_confirm_without_ollama(self):
+        before = len(FakeOllamaHandler.requests)
+        chunks = []
+        debug = []
+        with patch("assistant.update_settings", side_effect=[
+            {"default_city": "Boston", "temperature_unit": "fahrenheit"},
+            {"default_city": "Boston", "temperature_unit": "celsius"},
+        ]) as save:
+            city_reply, history = answer_with_history(
+                "alpha:latest", "Set my default city to Boston", [],
+                on_chunk=chunks.append, on_tool_debug=debug.append, base_url=self.base_url,
+            )
+            unit_reply, history = answer_with_history(
+                "alpha:latest", "Use Celsius by default", history,
+                on_chunk=chunks.append, on_tool_debug=debug.append, base_url=self.base_url,
+            )
+        self.assertEqual(len(FakeOllamaHandler.requests), before)
+        self.assertEqual(save.call_args_list[0].kwargs, {"default_city": "Boston"})
+        self.assertEqual(save.call_args_list[1].kwargs, {"temperature_unit": "celsius"})
+        self.assertEqual(city_reply, "Default city set to Boston.")
+        self.assertEqual(unit_reply, "Default temperature unit set to Celsius.")
+        self.assertEqual(chunks, [city_reply, unit_reply])
+        self.assertIn("request set_weather_preferences", debug[0])
+        self.assertEqual(history[-1]["content"], unit_reply)
+
+    def test_natural_spoken_setting_phrases(self):
+        self.assertEqual(
+            _simple_setting_command("Can you set my default city to New York?"),
+            {"default_city": "New York"},
+        )
+        self.assertEqual(
+            _simple_setting_command("I want the temperature in Celsius instead"),
+            {"temperature_unit": "celsius"},
+        )
+        self.assertIsNone(_simple_setting_command("What's the temperature in Celsius today?"))
+
+    def test_model_can_change_weather_preference_with_tool(self):
+        with patch("assistant.update_settings", return_value={
+            "default_city": "New York", "temperature_unit": "fahrenheit"
+        }) as save:
+            answer_with_history(
+                "alpha:latest", "Remember New York for future weather", [], base_url=self.base_url
+            )
+        save.assert_called_once_with(default_city="New York")
+        tool_message = FakeOllamaHandler.requests[-1][1]["messages"][-1]
+        self.assertEqual(tool_message["tool_name"], "set_weather_preferences")
+        self.assertEqual(json.loads(tool_message["content"])["default_city"], "New York")
 
     def test_interrupt_after_weather_lookup_skips_final_model_request(self):
         cancellation = ChatCancellation()

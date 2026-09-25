@@ -8,6 +8,11 @@ from weather import WeatherError, get_weather
 
 
 class WeatherTests(unittest.TestCase):
+    def setUp(self):
+        settings = patch("weather.load_settings", return_value={"default_city": "", "temperature_unit": "fahrenheit"})
+        self.settings = settings.start()
+        self.addCleanup(settings.stop)
+
     @staticmethod
     def fake_request(url):
         parsed = urlsplit(url)
@@ -15,7 +20,7 @@ class WeatherTests(unittest.TestCase):
             return {"results": [{"name": "Boston", "admin1": "Massachusetts", "country": "United States", "latitude": 42.36, "longitude": -71.06}]}
         return {
             "timezone": "America/New_York",
-            "current": {"time": "2026-09-25T10:00", "temperature_2m": 65, "apparent_temperature": 64, "wind_speed_10m": 8, "weather_code": 3},
+            "current": {"time": "2026-09-25T10:00", "temperature_2m": 65, "apparent_temperature": 64, "weather_code": 3},
             "daily": {
                 "time": ["2026-09-25", "2026-09-26"],
                 "temperature_2m_max": [70, 68],
@@ -35,16 +40,26 @@ class WeatherTests(unittest.TestCase):
         self.assertEqual(parse_qs(urlsplit(fetch.call_args_list[1].args[0]).query)["timezone"], ["auto"])
 
     def test_current_weather_and_default_location(self):
-        with patch.dict("weather.os.environ", {"WEATHER_DEFAULT_LOCATION": "Boston"}):
-            with patch("weather._get_json", side_effect=self.fake_request):
-                result = get_weather()
+        self.settings.return_value = {"default_city": "Boston", "temperature_unit": "fahrenheit"}
+        with patch("weather._get_json", side_effect=self.fake_request):
+            result = get_weather()
         self.assertEqual(result["current"]["temperature"], 65)
         self.assertEqual(result["temperature_unit"], "F")
+        self.assertNotIn("wind_speed_mph", result["current"])
 
     def test_missing_location_gives_clear_error(self):
-        with patch.dict("weather.os.environ", {}, clear=True):
-            with self.assertRaisesRegex(WeatherError, "No location"):
-                get_weather()
+        with self.assertRaisesRegex(WeatherError, "No location"):
+            get_weather()
+
+    def test_celsius_preference_changes_forecast_request_and_result_unit(self):
+        self.settings.return_value = {"default_city": "Boston", "temperature_unit": "celsius"}
+        with patch("weather._get_json", side_effect=self.fake_request) as fetch:
+            result = get_weather()
+        self.assertEqual(result["temperature_unit"], "C")
+        parameters = parse_qs(urlsplit(fetch.call_args_list[1].args[0]).query)
+        self.assertEqual(parameters["temperature_unit"], ["celsius"])
+        self.assertNotIn("wind_speed_unit", parameters)
+        self.assertNotIn("wind_speed_10m", parameters["current"][0])
 
     def test_date_outside_forecast_gives_clear_error(self):
         with patch("weather._get_json", side_effect=self.fake_request):

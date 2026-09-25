@@ -7,7 +7,7 @@ import calendar
 import json
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from collections.abc import Callable
 from http.client import HTTPConnection, HTTPException
 from socket import SHUT_RDWR, socket
@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from local_clock import get_current_datetime
+from settings import SettingsError, load_settings, update_settings
 from weather import WeatherError, get_weather
 
 
@@ -42,19 +43,48 @@ CLOCK_TOOL = {
     "type": "function",
     "function": {
         "name": "get_current_datetime",
-        "description": "Read the current date, time, weekday, and timezone from this Raspberry Pi's system clock. Use for questions asking what time or date it is now.",
+        "description": "Read the current date and time from this Raspberry Pi's system clock. Use for current time or date questions, and answer with only the part the user requested.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+SET_WEATHER_PREFERENCES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "set_weather_preferences",
+        "description": "Save a default city or default temperature unit for future weather questions. Use only when the user asks to change a lasting preference.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "default_city": {"type": "string", "description": "City and optional state/country. Empty string clears the default city."},
+                "temperature_unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+            },
+        },
+    },
+}
+GET_WEATHER_PREFERENCES_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather_preferences",
+        "description": "Read the saved default city and default temperature unit.",
         "parameters": {"type": "object", "properties": {}},
     },
 }
 WEATHER_INSTRUCTIONS = (
     "You can request get_weather for live weather information. Always use it for weather "
-    "questions; never guess current conditions or forecasts. If the tool returns an error, "
+    "questions; never guess current conditions or forecasts. Do not include wind "
+    "speed in weather answers. If the tool returns an error, "
     "explain the error instead of inventing weather. If the user gives no location, "
     "call get_weather without one; it will use a configured default or tell you to ask "
     "for a city. For today or tomorrow, pass that exact word as the day; do not "
     "turn it into a calendar date. For a month and day without a year, use MM-DD "
     "and let the weather tool resolve the year. Use get_current_datetime for questions about "
-    "the current date or time. Do not state a tool result before the tool returns."
+    "the current date or time. If asked only for time, answer with time only; if asked "
+    "only for date, answer with date only. Give both only when both were requested. "
+    "Use set_weather_preferences when the user asks to "
+    "change a default city or temperature unit, and get_weather_preferences when asked "
+    "about those settings. Never claim a setting changed unless that tool succeeds. "
+    "Do not change a default for a one-time weather question. Do not state a tool "
+    "result before the tool returns."
 )
 
 MONTH_NUMBERS = {
@@ -305,6 +335,78 @@ def _day_from_prompt(prompt: str) -> str | None:
     return _relative_day_from_prompt(prompt) or _yearless_day_from_prompt(prompt)
 
 
+def _simple_setting_command(prompt: str) -> dict[str, str] | None:
+    """Handle clear spoken preference commands without depending on model behavior."""
+    text = prompt.strip().rstrip(".!? ")
+    text = re.sub(r"^(?:can|could|would) you\s+", "", text, flags=re.IGNORECASE)
+    city_patterns = (
+        r"(?:please\s+)?(?:set|change)(?:\s+my|\s+the)?\s+default\s+(?:city|location)\s+(?:to|as)\s+(.+)",
+        r"(?:please\s+)?(?:use|make)\s+(.+?)\s+(?:as\s+)?(?:my|the)\s+default\s+(?:city|location)",
+        r"(?:please\s+)?i want (?:my|the) default (?:city|location) (?:to be|set to) (.+)",
+    )
+    for pattern in city_patterns:
+        match = re.fullmatch(pattern, text, flags=re.IGNORECASE)
+        if match:
+            city = match.group(1).strip()
+            if not re.search(r"\band\b.*\b(celsius|celcius|fahrenheit)\b", city, re.IGNORECASE):
+                return {"default_city": city}
+    if re.fullmatch(r"(?:please\s+)?clear(?:\s+my|\s+the)?\s+default\s+(?:city|location)", text, re.IGNORECASE):
+        return {"default_city": ""}
+    unit_patterns = (
+        r"(?:please\s+)?(?:set|change)(?:\s+my|\s+the)?\s+(?:temperature\s+)?units?\s+(?:to\s+)?(celsius|celcius|fahrenheit)",
+        r"(?:please\s+)?(?:set|change)(?:\s+my|\s+the)?\s+default\s+(?:temperature\s+)?units?\s+(?:to\s+)?(celsius|celcius|fahrenheit)",
+        r"(?:please\s+)?(?:use|switch\s+to)\s+(celsius|celcius|fahrenheit)(?:\s+by\s+default)?",
+        r"(?:please\s+)?make\s+(celsius|celcius|fahrenheit)\s+the\s+default",
+        r"(?:please\s+)?(?:show|give\s+me)\s+temperatures?\s+in\s+(celsius|celcius|fahrenheit)\s+by\s+default",
+        r"(?:please\s+)?i want (?:the\s+)?temperatures?\s+(?:(?:to be|shown)\s+)?in\s+(celsius|celcius|fahrenheit)(?:\s+by\s+default|\s+from\s+now\s+on|\s+instead)",
+    )
+    for pattern in unit_patterns:
+        match = re.fullmatch(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return {"temperature_unit": match.group(1).lower()}
+    return None
+
+
+def _simple_clock_question(prompt: str) -> str | None:
+    """Recognize common current-time questions without using model judgment."""
+    text = prompt.strip().lower().rstrip(".!? ")
+    text = text.replace("what's", "what is").replace("today's", "today")
+    text = re.sub(r"^(?:please\s+|(?:can|could) you\s+)", "", text)
+    patterns = {
+        "both": (
+            r"what is (?:the )?(?:date and time|time and date)(?: right now| now| today)?",
+            r"(?:tell|give) me (?:the )?(?:date and time|time and date)",
+        ),
+        "time": (
+            r"what time is it(?: right now| now)?",
+            r"what is (?:the )?(?:current )?time(?: right now| now)?",
+            r"(?:tell|give) me (?:the )?(?:current )?time(?: right now| now)?",
+        ),
+        "date": (
+            r"what (?:date|day) is it(?: today| now)?",
+            r"what day is today",
+            r"what is (?:the |today |current )?date(?: today| now)?",
+            r"(?:tell|give) me (?:the |today |current )?date",
+        ),
+    }
+    for kind, options in patterns.items():
+        if any(re.fullmatch(pattern, text) for pattern in options):
+            return kind
+    return None
+
+
+def _clock_reply(kind: str, clock: dict[str, str]) -> str:
+    observed = datetime.fromisoformat(clock["iso_datetime"])
+    time_text = f"{observed.hour % 12 or 12}:{observed.minute:02d} "
+    time_text += "AM" if observed.hour < 12 else "PM"
+    date_text = f"{calendar.month_name[observed.month]} {observed.day}, {observed.year}"
+    if kind == "time":
+        return f"{time_text}."
+    if kind == "date":
+        return f"{date_text}."
+    return f"{time_text} on {date_text}."
+
+
 def _tool_result(call: dict, prompt: str) -> tuple[str, str]:
     function = call.get("function")
     if not isinstance(function, dict):
@@ -314,7 +416,29 @@ def _tool_result(call: dict, prompt: str) -> tuple[str, str]:
     if name == "get_current_datetime":
         if arguments != {}:
             return name, json.dumps({"error": "This clock tool takes no arguments."})
-        return name, json.dumps(get_current_datetime())
+        clock = get_current_datetime()
+        asks_time = re.search(r"\btime\b", prompt, re.IGNORECASE) is not None
+        asks_date = re.search(r"\b(date|day)\b", prompt, re.IGNORECASE) is not None
+        if asks_time and not asks_date:
+            clock = {"time": clock["time"], "timezone": clock["timezone"]}
+        elif asks_date and not asks_time:
+            clock = {"date": clock["date"], "weekday": clock["weekday"]}
+        return name, json.dumps(clock)
+    if name == "get_weather_preferences":
+        if arguments != {}:
+            return name, json.dumps({"error": "This settings lookup takes no arguments."})
+        try:
+            return name, json.dumps(load_settings())
+        except SettingsError as exc:
+            return name, json.dumps({"error": str(exc)})
+    if name == "set_weather_preferences":
+        if not isinstance(arguments, dict) or set(arguments) - {"default_city", "temperature_unit"}:
+            return name, json.dumps({"error": "Invalid settings arguments."})
+        try:
+            result = update_settings(**arguments)
+        except SettingsError as exc:
+            result = {"error": str(exc)}
+        return name, json.dumps(result)
     if name == "get_weather":
         if not isinstance(arguments, dict) or set(arguments) - {"location", "day"}:
             return name, json.dumps({"error": "Invalid weather arguments."})
@@ -338,6 +462,56 @@ def answer_with_history(
     base_url: str = OLLAMA_URL,
 ) -> tuple[str, list[dict[str, str]]]:
     user_message = {"role": "user", "content": prompt}
+    simple_command = _simple_setting_command(prompt)
+    if simple_command is not None:
+        if cancellation is not None:
+            cancellation.check()
+        if on_tool_debug is not None:
+            on_tool_debug(f"[tool] request set_weather_preferences (spoken command): {json.dumps(simple_command)}")
+        _, result_text = _tool_result(
+            {"function": {"name": "set_weather_preferences", "arguments": simple_command}}, prompt
+        )
+        if cancellation is not None:
+            cancellation.check()
+        if on_tool_debug is not None:
+            on_tool_debug(f"[tool] result set_weather_preferences: {result_text}")
+        result = json.loads(result_text)
+        if "error" in result:
+            reply = f"I couldn't save that setting: {result['error']}"
+        elif "default_city" in simple_command:
+            reply = (
+                f"Default city set to {result['default_city']}."
+                if result["default_city"] else "Default city cleared."
+            )
+        else:
+            reply = f"Default temperature unit set to {result['temperature_unit'].capitalize()}."
+        if on_chunk is not None:
+            on_chunk(reply)
+        updated_history = (history + [user_message, {"role": "assistant", "content": reply}])[
+            -MAX_HISTORY_MESSAGES:
+        ]
+        return reply, updated_history
+    clock_kind = _simple_clock_question(prompt)
+    if clock_kind is not None:
+        if cancellation is not None:
+            cancellation.check()
+        if on_tool_debug is not None:
+            on_tool_debug("[tool] request get_current_datetime (direct clock question): {}")
+        clock = get_current_datetime()
+        if cancellation is not None:
+            cancellation.check()
+        if on_tool_debug is not None:
+            fields = {"time": clock["time"]} if clock_kind == "time" else {"date": clock["date"]}
+            if clock_kind == "both":
+                fields = {"time": clock["time"], "date": clock["date"]}
+            on_tool_debug(f"[tool] result get_current_datetime: {json.dumps(fields)}")
+        reply = _clock_reply(clock_kind, clock)
+        if on_chunk is not None:
+            on_chunk(reply)
+        updated_history = (history + [user_message, {"role": "assistant", "content": reply}])[
+            -MAX_HISTORY_MESSAGES:
+        ]
+        return reply, updated_history
     current_date = get_current_datetime()["date"]
     messages: list[dict] = [
         {"role": "system", "content": f"Pi local date: {current_date}. {WEATHER_INSTRUCTIONS}"},
@@ -353,7 +527,7 @@ def answer_with_history(
             on_chunk=on_chunk,
             cancellation=cancellation,
             base_url=base_url,
-            tools=[WEATHER_TOOL, CLOCK_TOOL],
+            tools=[WEATHER_TOOL, CLOCK_TOOL, SET_WEATHER_PREFERENCES_TOOL, GET_WEATHER_PREFERENCES_TOOL],
         )
         calls = response.get("tool_calls", [])
         if not calls:
