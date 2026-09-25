@@ -1,0 +1,35 @@
+{
+  "scenario": "no-audio",
+  "python": "/home/mriggly/Projects/voice-assistant-baby/.venv/bin/python",
+  "platform": "Linux-6.18.50+rpt-rpi-2712-aarch64-with-glibc2.41",
+  "versions": {
+    "moonshine-voice": "0.1.5",
+    "sounddevice": "0.5.6",
+    "numpy": "2.5.3"
+  },
+  "portaudio": [
+    1246720,
+    "PortAudio V19.6.0-devel, revision 396fe4b6699ae929d3a685b3ef8a7e97396139a4"
+  ],
+  "device": {
+    "name": "Kreo Owl Camera: USB Audio (hw:2,0)",
+    "index": 1,
+    "hostapi": 0,
+    "max_input_channels": 2,
+    "max_output_channels": 0,
+    "default_low_input_latency": 0.008684807256235827,
+    "default_low_output_latency": -1.0,
+    "default_high_input_latency": 0.034829931972789115,
+    "default_high_output_latency": -1.0,
+    "default_samplerate": 44100.0
+  },
+  "requested_sample_rate": 16000,
+  "blocksize": 1024,
+  "options": {
+    "return_audio_data": "false"
+  },
+  "model": "small",
+  "input_latency_setting": "high",
+  "mic_source_sha256": "4ba21c0afd05e2be4f94a89e20cf8fb607413aa36b1183977a882a3bb8528f3a",
+  "mic_has_worker_queue": true
+}

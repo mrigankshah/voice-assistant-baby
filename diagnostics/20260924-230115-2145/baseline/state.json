@@ -1,0 +1,21 @@
+{
+  "state": "stopped",
+  "overflows": 156,
+  "captured_s": 885.6959999998572,
+  "processed_s": 885.6959999999999,
+  "processing_calls": 944,
+  "completed_lines": 151,
+  "parse_max_ms": 2165.4175220010075,
+  "process_max_ms": 6194.893146999675,
+  "callback_gap_max_ms": 212.50250400044024,
+  "actual_rate": 16000.0,
+  "actual_latency_s": 0.064,
+  "process_last_ms": 0.6230959988897666,
+  "parse_last_ms": 2165.4175220010075,
+  "returned_lines": 152,
+  "returned_audio_s": 818.56,
+  "last_line_duration_s": 10.0479736328125,
+  "last_decode_ms": 2937,
+  "heartbeat_at": 1790306180.8576384,
+  "backlog_s": 0.0
+}
