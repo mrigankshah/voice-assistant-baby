@@ -13,8 +13,7 @@ class RoutingEvaluationTests(unittest.TestCase):
     def test_runner_records_all_cases_and_does_not_execute_workflows(self):
         with tempfile.TemporaryDirectory() as directory:
             with patch("evaluate_routing.__file__", str(Path(directory) / "evaluate_routing.py")), patch(
-                "evaluate_routing.list_models", return_value=["test"]
-            ), patch("evaluate_routing.interpret_request", return_value={"intent": "chat"}), patch(
+                "evaluate_routing.interpret_request", return_value={"intent": "chat"}), patch(
                 "assistant.get_weather"
             ) as weather, patch("assistant.update_settings") as settings, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(main(["--model", "test"]), 0)

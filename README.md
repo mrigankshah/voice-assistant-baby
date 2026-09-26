@@ -1,6 +1,6 @@
 # Voice Assistant Baby
 
-The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, and remember a short conversation history. Ollama first interprets each request as a small structured action. Python resolves saved settings, dates, and follow-ups, then runs the right workflow. Ordinary conversation gets a separate prompt and still streams as it is generated. Spoken replies will come later.
+The Pi can chat by typed text or listen through Moonshine and print a reply from Ollama. Both modes list the models installed in Ollama, let you choose one, and remember a short conversation history. Explicit command words route weather, clock, settings, timers, and alarms through Python without a model classification call. Other questions go straight to Ollama and stream as they are generated. Spoken replies will come later.
 
 ## Run on the Pi
 
@@ -30,7 +30,7 @@ What's the weather in Boston today?
 Will it rain in Boston tomorrow?
 ```
 
-Then try the same question by voice with "Hey Baby". Ollama identifies the request, and Python gets current conditions or a forecast from [Open-Meteo](https://open-meteo.com/en/docs). Location and forecast requests go to Open-Meteo over the internet. Ollama and Moonshine remain local. No weather API key or extra Python package is needed for personal use.
+Then try the same question by voice with "Hey Baby". The command router identifies the request, and Python gets current conditions or a forecast from [Open-Meteo](https://open-meteo.com/en/docs). Location and forecast requests go to Open-Meteo over the internet. Ollama and Moonshine remain local. No weather API key or extra Python package is needed for personal use.
 
 You can set a default location on the Pi before starting either program, so "What's the weather?" works without naming a city:
 
@@ -51,9 +51,9 @@ Say "use Fahrenheit by default" to switch back, or "clear my default city" to re
 
 For each weather question, a city you name takes priority. A follow-up such as "and tomorrow?" keeps the last weather location. "At home" uses your saved default city, and a fresh weather question without a city uses that default too. If no city is available, the assistant asks for one. Python checks locations and dates against your words before it runs the lookup. The assistant keeps this active task in memory alongside the conversation history, and `/reset` clears it.
 
-The weather workflow covers current conditions and daily forecasts up to 16 days ahead. Temperature defaults to Fahrenheit but can be changed to Celsius. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant reports that instead of guessing. The selected Ollama model must support structured JSON output. Its interpretation quality still needs testing with the exact model installed on your Pi.
+The weather workflow covers current conditions and daily forecasts up to 16 days ahead. Temperature defaults to Fahrenheit but can be changed to Celsius. The first matching city is named in the answer; give a state or country if the name is ambiguous. If the internet or weather service is unavailable, the assistant reports that instead of guessing. Say "weather" or "forecast" for a new lookup; "Will it rain?" alone goes to ordinary conversation.
 
-"What time is it?" gives only the time, "What's today's date?" gives only the date, and "What's the date and time?" gives both. These questions read the Pi's clock directly after interpretation. Check `timedatectl status` on the Pi if the reported date, time, or timezone is wrong. A weather request for just "today" or "tomorrow" uses that word directly, even if the model suggests a stale calendar date.
+"What time is it?" gives only the time, "What's today's date?" gives only the date, and "What's the date and time?" gives both. These questions read the Pi's clock directly. Check `timedatectl status` on the Pi if the reported date, time, or timezone is wrong.
 
 For a named month and day without a year, such as "September 28th", the weather workflow finds the matching date in the returned forecast. This can resolve to the current or next calendar year. If the date is beyond the available 16-day forecast, it reports that limit.
 
@@ -64,7 +64,41 @@ To see how a request was interpreted and executed, add `--debug-tools` to either
 ./.venv/bin/python voice_assistant.py --debug-tools
 ```
 
-Debug lines show the structured request (`[route]`), the chosen location and date, and the tool result or error. They appear separately from the assistant's answer. Leave the flag off for normal use.
+Debug lines show the command route (`[route]`), the chosen location and date, and the tool result or error. They appear separately from the assistant's answer. Leave the flag off for normal use.
+
+## Timers and alarms
+
+Try typed commands first, then add "Hey Baby" when speaking:
+
+```text
+Set a timer for ten minutes
+Set a pasta timer for five minutes
+List my timers
+Cancel timer number 2
+Set an alarm for tomorrow at 7 AM
+Set a weekday alarm for 7 AM
+List my alarms
+Cancel alarm number 3
+```
+
+Timers and alarms are saved in `assistant_schedule.sqlite3`, which is excluded from Git. IDs are shown when created. Multiple active items can coexist; an ambiguous cancellation asks for a number. An alarm with no date uses the next occurrence of its time. Say AM/PM or use a 24-hour time such as 19:00. One-time, daily, and weekday alarms are supported. The Pi's local timezone controls alarms. Timers can last up to seven days. Questions such as "What is a timer?" go to ordinary conversation. Requests for multiple actions in one utterance ask you to split them.
+
+When a timer or alarm fires, the assistant prints `[Schedule]` in the terminal. It does not play a sound yet. The typed or voice app checks the local schedule while running. To keep schedules firing when the assistant app is closed, run the independent scheduler:
+
+```bash
+python3 scheduler_service.py
+```
+
+For automatic startup on a Pi where this repository is at `~/voice-assistant-baby`, install the included user service:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/voice-assistant-scheduler.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now voice-assistant-scheduler.service
+```
+
+Use `journalctl --user -u voice-assistant-scheduler.service -f` to watch terminal notifications. If you need it to run after logout, enable user lingering with `sudo loginctl enable-linger "$(whoami)"`. Check the unit's paths first if your checkout is elsewhere. After a restart, future events stay scheduled; an event missed while everything was off fires once on return. The scheduler never sends messages or calls external services.
 
 ## Try the microphone
 
@@ -80,7 +114,7 @@ After each reply, you have **15 seconds** to start a follow-up without repeating
 
 Moonshine still listens and transcribes locally while waiting, but ordinary conversation is ignored and is not sent to Ollama. The assistant disables returned audio data from Moonshine's transcripts because it only needs the recognized words; this avoids the slowdown measured in the Pi diagnostics. During an active conversation, nearby speech is treated as directed at the assistant; this does not identify individual speakers.
 
-The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript, interprets the request, and streams ordinary chat replies. Routine weather, clock, and settings replies are formatted directly after their work completes. If the reply is going in the wrong direction, start speaking again: the current answer stops, and your new question replaces it. The interrupted answer is not kept in conversation history. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken.
+The assistant waits for 1.5 seconds of extra quiet after Moonshine finishes a speech segment before responding. If you resume speaking during that wait, it combines the segments into one question. The program then prints the transcript, routes explicit commands, and streams ordinary chat replies. If the reply is going in the wrong direction, start speaking again: the current answer stops, and your new question replaces it. The interrupted answer is not kept in conversation history. Press Ctrl+C to stop. Moonshine architecture 4 is Small Streaming; this mode uses the same architecture. Replies are currently printed rather than spoken.
 
 To change the follow-up window, run `./.venv/bin/python voice_assistant.py --conversation-timeout 5` (seconds). This is separate from the short pause within a question.
 
@@ -181,13 +215,11 @@ sessions would obscure the accumulation we are trying to measure.
 
 ## Evaluate the current router
 
-The assistant handles standard greetings, clock questions, and clear setting
-commands directly. Other requests go to a compact JSON interpreter with explicit
-schema instructions and examples. Only a follow-up receives the active task;
-unrelated past replies are excluded from classification. The interpreter uses
-temperature 0 and a 256-token output limit. Obvious unrelated action selections
-are rejected with a clarification question. These checks do not guarantee correct
-classification for every phrasing.
+The live router uses explicit command patterns. It does not call a model to
+classify requests. Short weather follow-ups and pending timer/alarm answers keep
+their task context; unrelated questions go to ordinary conversation. Commands
+without enough information ask for a specific missing field. Patterns will not
+cover every phrasing, so use the command examples above as a starting point.
 
 To test this actual routing path on the Pi without executing workflows, run:
 
@@ -195,11 +227,10 @@ To test this actual routing path on the Pi without executing workflows, run:
 python3 evaluate_routing.py --repeat 3
 ```
 
-Choose the installed model. The command saves `report.md`, `results.jsonl`, and
-`metadata.json` in a new `eval-results/routing-*` directory. It grades intent only;
-argument accuracy and final answer quality still require checking. The debug log
-records whether each decision came from a direct rule or the model, including
-rejected model decisions. Stop the voice assistant first for meaningful timings.
+No installed model or Ollama service is needed. It saves `report.md`, `results.jsonl`, and
+`metadata.json` in a new `eval-results/routing-*` directory. The older test cases
+include requests without explicit command words, so failures there can be the
+expected result of the new command vocabulary. Grade real spoken commands too.
 
 ## Evaluate real model tool decisions (previous architecture)
 
@@ -246,7 +277,7 @@ tokens per case. `token_limit` indicates a truncated response, not a reliable
 tool decision; increase `--num-predict` or use a supported non-thinking mode.
 
 This is a **baseline of the former direct tool-calling design**. The application
-now uses a structured interpreter in `structured_assistant.py`; this evaluator
+now uses explicit Python command routing; this evaluator
 still sends the former tool list and prompt so the old results remain comparable.
 It does not measure the new interpreter or execute a complete tool loop, grade answer
 text, or test speech recognition. A no-tool pass only means the model didn't call
@@ -266,6 +297,86 @@ is collected, use these same cases to evaluate a structured request interpreter
 before enabling it in the voice assistant.
 
 ## Develop on Windows
+
+### Experimental local intent classifier
+
+The first completed frozen/SetFit comparison and its limitations are documented
+in [the v2 training report](docs/intent-training-v2.md).
+
+This experiment does not change the live assistant. `intent_data.json` contains
+training, validation, test, and challenge examples for six intents: chat, weather,
+clock, reading settings, changing settings, and unsupported actions. Low confidence
+produces `uncertain`, a rejection decision rather than a trained class. The corpus
+is manually authored, not real user traffic. Everyday, contextual, and unseen-action
+results are reported separately; rare ambiguous/negated requests have a challenge
+set. Compact previous-task context tests both follow-ups and unrelated topic changes.
+Multiple-action execution and missing-slot dialogue are not implemented here.
+
+On Windows, create a separate environment so training dependencies do not affect
+the assistant or Moonshine:
+
+```powershell
+python -m venv .venv-intent
+.\.venv-intent\Scripts\python.exe -m pip install -r requirements-intent-train.txt
+.\.venv-intent\Scripts\python.exe intent_classifier.py train --method frozen --artifact models/intent-minilm-v2
+.\.venv-intent\Scripts\python.exe intent_classifier.py train --method setfit --artifact models/intent-setfit-v2
+.\.venv-intent\Scripts\python.exe intent_classifier.py evaluate --artifact models/intent-minilm-v2 --split validation --repeat 3
+.\.venv-intent\Scripts\python.exe intent_classifier.py evaluate --artifact models/intent-setfit-v2 --split validation --repeat 3
+```
+
+Frozen training keeps MiniLM's embedding weights and trains a small logistic
+regression head. SetFit fine-tunes the encoder for 150 steps (configurable with
+`--steps`), then fits the same kind of head. Both use only the training split.
+The encoder and plain JSON head weights are saved in separate versioned folders;
+existing folders are never overwritten. To reuse the original downloaded encoder
+offline, add `--model models/intent-minilm/encoder --local-files-only` when training.
+Evaluation loads only local files and runs
+one sentence at a time; no Ollama, weather calls, or settings changes are involved.
+Use `--model google/embeddinggemma-300m --artifact models/intent-gemma --embedding-prefix "task: classification | query: "` on the train
+command for a separate comparison (model access terms and runtime compatibility
+must be satisfied). Use that same `--artifact` when evaluating it.
+
+Start with raw predictions (`--threshold 0`). Validation reports include a threshold
+sweep without rerunning the encoder. Experiment with rejection thresholds
+on validation only, for example `--threshold 0.7`; rejected predictions are reported
+as `uncertain`, never counted as correct chat. Scores are not calibrated certainty.
+After choosing the configuration, evaluate `--split test` and `--split challenge`.
+Music, shopping and smart-home action examples appear only in the test set.
+Do not repeatedly tune
+against test failures; collect a fresh held-out set if they become training examples.
+
+`capabilities.py` gates experimental routes against enabled workflows; disabling
+a known workflow produces `unsupported_action` without retraining. Unknown model
+labels produce `uncertain`. It never executes tools. Adding a new intent requires
+updating the registry, labeled examples (including formerly unsupported examples),
+retraining, and regression evaluation. The live assistant uses explicit command
+rules; the classifier artifacts predate timer and alarm support.
+
+Copy the saved artifact to the Pi separately from Git (models are ignored).
+For example, first create the destination with `mkdir -p ~/voice-assistant-baby/models`
+on the Pi, then from Windows:
+
+```powershell
+scp -r .\models\intent-setfit-v2 PI_USER@PI_HOST:~/voice-assistant-baby/models/
+```
+
+Replace the SSH user/host with your Pi's values. Retain the previous artifact as a
+rollback option. The Pi needs inference dependencies only, not SetFit's trainer:
+
+```bash
+python3 -m venv .venv-intent
+./.venv-intent/bin/python -m pip install -r requirements-intent.txt
+./.venv-intent/bin/python intent_classifier.py evaluate --artifact models/intent-setfit-v2 --split test --repeat 3 --threads 2
+```
+
+Results are written under `eval-results/intent-*/results.json`, including per-request
+scores, failures, median/P95 warmed latency, and model load time. These timings
+exclude speech recognition and the conversational answer. Repeat on the Pi while
+the normal STT/LLM services are loaded to observe contention. Memory measurement
+and live integration remain later steps. Results and artifacts include dependency
+versions, dataset hashes, and training parameters. Model files contain no transcripts;
+the head metadata has a dataset hash, not the text examples. No live transcript logging
+is enabled by this experiment.
 
 Edit code in the Windows copy of this repository, then commit and push it to GitHub. Pull on the Pi to test with its installed models. Model files, recordings, and local settings stay outside Git.
 

@@ -1,0 +1,13 @@
+[Unit]
+Description=Voice Assistant Baby local timers and alarms
+After=local-fs.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/voice-assistant-baby
+ExecStart=/usr/bin/python3 %h/voice-assistant-baby/scheduler_service.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

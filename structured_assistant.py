@@ -11,94 +11,15 @@ from time import monotonic
 import assistant as core
 from settings import SettingsError
 from weather import WeatherError
+from local_schedule import Schedule
+from schedule_commands import handle_alarm, handle_timer
 
-
-ROUTER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "intent": {"type": "string", "enum": ["chat", "weather", "clock", "read_setting", "write_setting", "clarify"]},
-        "location": {"type": ["string", "null"]},
-        "day": {"type": ["string", "null"]},
-        "clock_part": {"type": ["string", "null"], "enum": ["time", "date", "both", None]},
-        "setting_name": {"type": ["string", "null"], "enum": ["default_city", "temperature_unit", None]},
-        "setting_value": {"type": ["string", "null"]},
-        "question": {"type": ["string", "null"]},
-    },
-    "required": ["intent"],
-    "additionalProperties": False,
-}
-
-ROUTER_INSTRUCTIONS = (
-    "Classify the latest user message into one intent and extract only details the user actually said. "
-    "Return a compact JSON object matching the schema. Do not answer the user in this step. "
-    "weather: current conditions, forecast, rain likelihood, or whether to take an umbrella; "
-    "clock: ask for the current date or time; read_setting: ask for saved city or unit; "
-    "write_setting: explicitly ask to save or clear a lasting city or unit preference; "
-    "chat: greeting, explanation, story, joke, capability question, hypothetical action, "
-    "or negated action; clarify: a request that cannot be understood. "
-    "A mention of weather, a city, or a setting does not by itself request an action. "
-    "Never interpret 'don't', 'do not', or 'not yet' as a command to execute. "
-    "Omit fields that are irrelevant or not supplied. For weather use day='today' or 'tomorrow' literally; "
-    "copy an explicitly spoken calendar date or month and day. "
-    "Use location only for a city the user named in the latest message. "
-    "Home, here, and my city mean location=null. "
-    "For a follow-up such as 'and tomorrow?' or 'what about Paris?', select the active task's "
-    "intent and supply only details newly stated; Python will inherit the rest. "
-    "For write_setting use setting_name and setting_value; clearing a city uses an empty value. "
-    "For clock use clock_part time, date, or both. Only clarify when the request itself is unclear."
-)
-
-ROUTER_EXAMPLES = (
-    ('How are you?', {"intent": "chat"}),
-    ('What time is it?', {"intent": "clock", "clock_part": "time"}),
-    ('Why does rain happen?', {"intent": "chat"}),
-    ('Will it rain in London tomorrow?', {"intent": "weather", "location": "London", "day": "tomorrow"}),
-    ('What is my default city?', {"intent": "read_setting"}),
-    ('Set my default city to London.', {"intent": "write_setting", "setting_name": "default_city", "setting_value": "London"}),
-    ("Don't change my default city to London.", {"intent": "chat"}),
-)
-
-
-def _direct_plan(prompt: str) -> dict | None:
-    """Fast paths for unambiguous commands, independent of model routing."""
-    text = prompt.strip().replace("’", "'").rstrip(".!? ")
-    part = core._simple_clock_question(text)
-    if part:
-        return {"intent": "clock", "clock_part": part}
-    if re.fullmatch(r"(?:hello|hi|hey|how are you|how are you doing|how's it going|thanks|thank you)", text, re.IGNORECASE):
-        return {"intent": "chat"}
-    command = core._simple_setting_command(text)
-    if command and len(command) == 1:
-        name, value = next(iter(command.items()))
-        if _authorized_setting_change(text, name, value):
-            return {"intent": "write_setting", "setting_name": name, "setting_value": value}
-    if re.fullmatch(
-        r"(?:what is|what's|tell me) (?:my|the) (?:saved |default )?(?:city|location|temperature unit|settings|preferences)",
-        text, re.IGNORECASE,
-    ):
-        return {"intent": "read_setting"}
-    return None
-
-
-def _supported_action(plan: dict, prompt: str, active_task: dict | None) -> bool:
-    """Reject obviously unrelated actions; this is not a semantic classifier."""
-    intent = plan["intent"]
-    if intent == "weather":
-        return bool(
-            re.search(r"\b(weather|forecast|rain|raining|snow|snowing|temperature|hot|cold|warm|sunny|umbrella|jacket)\b", prompt, re.IGNORECASE)
-            or (_is_followup(prompt, active_task) and active_task.get("intent") == "weather")
-        )
-    if intent == "clock":
-        return bool(re.search(r"\b(time|date|day|clock)\b", prompt, re.IGNORECASE))
-    if intent == "read_setting":
-        return bool(re.search(r"\b(default|saved|setting|settings|preference|preferences|configured)\b", prompt, re.IGNORECASE))
-    return True
 
 CHAT_INSTRUCTIONS = (
     "You are Baby, a helpful conversational assistant on a Raspberry Pi. "
     "Answer ordinary questions and creative requests directly in natural language. "
     "You can explain, tell stories, and tell jokes. Be concise enough for voice. "
-    "The application handles live weather, the clock, and saved preferences separately. "
+    "The application handles live weather, the clock, saved preferences, timers, and alarms separately. "
     "Do not invent live conditions, claim an action happened, or claim to have used a tool."
 )
 
@@ -137,43 +58,6 @@ def _say(reply: str, on_chunk: Callable[[str], None] | None) -> str:
     if on_chunk is not None:
         on_chunk(reply)
     return reply
-
-
-def _interpret(
-    model: str, prompt: str, active_task: dict | None, *,
-    cancellation: core.ChatCancellation | None, base_url: str,
-) -> dict:
-    context = (
-        " Active task for this follow-up: " + json.dumps(active_task)
-        if _is_followup(prompt, active_task) else " This is a new request."
-    )
-    examples = "\n".join(f"User: {text}\nJSON: {json.dumps(result)}" for text, result in ROUTER_EXAMPLES)
-    messages = [
-        {"role": "system", "content": ROUTER_INSTRUCTIONS + context
-         + " Omit irrelevant fields. Output schema: " + json.dumps(ROUTER_SCHEMA)
-         + "\nExamples:\n" + examples},
-        {"role": "user", "content": prompt},
-    ]
-    response = core._stream_chat(
-        model, messages, cancellation=cancellation, base_url=base_url,
-        format_schema=ROUTER_SCHEMA,
-        options={"temperature": 0, "num_predict": 256},
-    )
-    try:
-        plan = json.loads(response["content"])
-    except (TypeError, ValueError, KeyError) as exc:
-        raise core.OllamaError("The model could not interpret that request. Please try again.") from exc
-    if not isinstance(plan, dict) or plan.get("intent") not in ROUTER_SCHEMA["properties"]["intent"]["enum"]:
-        raise core.OllamaError("The model returned an invalid request type. Please try again.")
-    for field in ("location", "day", "clock_part", "setting_name", "setting_value", "question"):
-        if field in plan and plan[field] is not None and not isinstance(plan[field], str):
-            raise core.OllamaError("The model returned invalid request details. Please try again.")
-    if set(plan) - set(ROUTER_SCHEMA["properties"]):
-        raise core.OllamaError("The model returned unknown request fields. Please try again.")
-    for field in ("clock_part", "setting_name"):
-        if plan.get(field) not in ROUTER_SCHEMA["properties"][field]["enum"]:
-            raise core.OllamaError("The model returned invalid request details. Please try again.")
-    return plan
 
 
 def _is_followup(prompt: str, active_task: dict | None) -> bool:
@@ -274,18 +158,11 @@ def _authorized_setting_change(prompt: str, name: str, value: str) -> bool:
 
 def interpret_request(model: str, prompt: str, active_task: dict | None = None, *,
                       cancellation=None, base_url=core.OLLAMA_URL, on_tool_debug=None) -> dict:
-    """Shared by the live assistant and the routing-only model evaluation."""
+    """Route explicit commands without a model call."""
+    from command_router import route_command
     _check(cancellation)
-    plan = _direct_plan(prompt)
-    if plan is None:
-        started = monotonic()
-        plan = _interpret(model, prompt, active_task, cancellation=cancellation, base_url=base_url)
-        _debug(on_tool_debug, f"[route] model ({monotonic() - started:.2f}s): {json.dumps(plan, ensure_ascii=False)}")
-        if not _supported_action(plan, prompt, active_task):
-            _debug(on_tool_debug, "[route] rejected action unrelated to current request")
-            plan = {"intent": "clarify", "question": "I couldn't match that to a request. Could you rephrase it?"}
-    else:
-        _debug(on_tool_debug, "[route] direct command")
+    plan = route_command(prompt, active_task)
+    _debug(on_tool_debug, "[route] explicit command")
     _check(cancellation)
     return plan
 
@@ -316,9 +193,24 @@ def answer_structured(
         return _finish(history, prompt, reply, None)
 
     if intent == "clarify":
-        question = plan.get("question") or "Could you rephrase that?"
+        reply = plan["question"]
+        return _finish(history, prompt, _say(reply, on_chunk), None)
+
+    if intent == "unsupported_action":
+        reply = "I can't do that yet. I can check weather, tell the time, manage settings, timers, and alarms."
+        return _finish(history, prompt, _say(reply, on_chunk), None)
+
+    if intent in {"timer", "alarm"}:
+        execution_prompt = prompt
+        if active_task and active_task.get("pending") and active_task.get("intent") == intent:
+            plan = {**active_task, **plan}
+            if plan.get("operation") == "cancel" and prompt.strip().isdigit():
+                execution_prompt = f"{intent} number {prompt.strip()}"
         _check(cancellation)
-        return _finish(history, prompt, _say(question, on_chunk), active_task)
+        schedule = Schedule()
+        reply, task = handle_timer(plan, execution_prompt, schedule) if intent == "timer" else handle_alarm(plan, execution_prompt, schedule)
+        _debug(on_tool_debug, f"[tool] {intent}: {reply}")
+        return _finish(history, prompt, _say(reply, on_chunk), task)
 
     if intent == "clock":
         part = core._simple_clock_question(prompt) or plan.get("clock_part") or "both"
@@ -346,8 +238,8 @@ def answer_structured(
     if intent == "write_setting":
         name, value = plan.get("setting_name"), plan.get("setting_value")
         if name not in ("default_city", "temperature_unit") or not isinstance(value, str):
-            reply = "Which default setting and value would you like to change?"
-            return _finish(history, prompt, _say(reply, on_chunk), active_task)
+            reply = "Please say the complete setting change, such as 'set my default city to Boston'."
+            return _finish(history, prompt, _say(reply, on_chunk), None)
         if not _authorized_setting_change(prompt, name, value):
             reply = "I didn't change your settings. Please say the change directly if you want it saved."
             _debug(on_tool_debug, "[tool] rejected setting change not explicitly requested")
@@ -366,8 +258,14 @@ def answer_structured(
         _check(cancellation)
         return _finish(history, prompt, _say(reply, on_chunk), None)
 
-    followup = _is_followup(prompt, active_task)
+    followup = _is_followup(prompt, active_task) and (
+        not active_task.get("pending") or plan.get("pending")
+    )
     named_city = core._weather_location_from_prompt(prompt, plan.get("location"))
+    if not named_city and followup and active_task and active_task.get("intent") == "weather":
+        short_city = re.fullmatch(r"(?:[Ww]hat|[Hh]ow) about ([A-Z][a-z]+)\??", prompt.strip())
+        if short_city:
+            named_city = short_city.group(1)
     if named_city:
         city = named_city
         source = "explicit"

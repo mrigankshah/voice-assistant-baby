@@ -670,12 +670,25 @@ def choose_model(models: list[str], *, read=input, write=print) -> str:
 
 
 def main() -> int:
+    from threading import Event, Thread
+    from local_schedule import Schedule
+
     parser = argparse.ArgumentParser(description="Chat with a local Ollama model.")
     parser.add_argument(
         "--debug-tools", action="store_true",
         help="Print tool requests and results while chatting.",
     )
     args = parser.parse_args()
+    schedule = Schedule()
+    stop_schedule = Event()
+
+    def show_schedule() -> None:
+        while not stop_schedule.wait(0.5):
+            schedule.fire_due()
+            for notice in schedule.take_notifications():
+                print(f"\n[Schedule] {notice}", flush=True)
+
+    Thread(target=show_schedule, daemon=True).start()
     print("Looking for models on this Pi...")
     try:
         model = choose_model(list_models())

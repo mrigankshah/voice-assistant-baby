@@ -1,0 +1,2 @@
+-r requirements-intent.txt
+setfit>=1.2,<2

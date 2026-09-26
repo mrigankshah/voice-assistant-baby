@@ -1,9 +1,11 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-intent/
 .env
 models/
 recordings/
 diagnostics/
 eval-results/
 assistant_settings.json
+assistant_schedule.sqlite3*

@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import call, patch
 
 from assistant import ChatCancellation, ChatInterrupted, OllamaError, answer_with_history
-from structured_assistant import ConversationHistory, ROUTER_SCHEMA, interpret_request
+from structured_assistant import ConversationHistory, interpret_request
 
 
 def plan(intent, **fields):
@@ -48,20 +48,27 @@ class StructuredAssistantTests(unittest.TestCase):
         settings.assert_not_called()
 
     def test_unrelated_weather_action_is_rejected(self):
-        with patch("assistant._stream_chat", return_value=plan("weather")), patch("assistant.get_weather") as weather:
+        with patch("assistant._stream_chat") as router, patch("assistant.get_weather") as weather, patch(
+            "assistant.chat", return_value="Yes, penguins are birds."
+        ):
             reply, _ = answer_with_history("local", "Are penguins birds?", [])
         weather.assert_not_called()
-        self.assertIn("rephrase", reply)
+        router.assert_not_called()
+        self.assertEqual(reply, "Yes, penguins are birds.")
+
+    def test_false_clarification_uses_original_question_for_chat(self):
+        with patch("assistant._stream_chat", return_value=plan(
+            "clarify", question="How do black holes form?"
+        )), patch("assistant.chat", return_value="Some form when massive stars collapse.") as chat:
+            reply, _ = answer_with_history("local", "How do black holes form?", [])
+        self.assertEqual(chat.call_args.args[1][-1]["content"], "How do black holes form?")
+        self.assertEqual(reply, "Some form when massive stars collapse.")
 
     def test_router_sees_schema_and_no_unrelated_active_task(self):
         with patch("assistant._stream_chat", return_value=plan("chat")) as request:
-            interpret_request("local", "Explain gravity", {"intent": "weather", "location": "London"})
-        messages = request.call_args.args[1]
-        self.assertEqual(len(messages), 2)
-        self.assertIn("Output schema:", messages[0]["content"])
-        self.assertIn("This is a new request", messages[0]["content"])
-        self.assertNotIn("Active task for this follow-up", messages[0]["content"])
-        self.assertEqual(request.call_args.kwargs["options"]["temperature"], 0)
+            result = interpret_request("local", "Explain gravity", {"intent": "weather", "location": "London"})
+        self.assertEqual(result["intent"], "chat")
+        request.assert_not_called()
 
     def setUp(self):
         clock_patch = patch("assistant.get_current_datetime", return_value=CLOCK)
@@ -73,11 +80,11 @@ class StructuredAssistantTests(unittest.TestCase):
 
     def test_weather_uses_saved_default_and_formats_verified_result(self):
         chunks, debug = [], []
-        with patch("assistant._stream_chat", return_value=plan("weather", day="tomorrow")) as interpret, patch(
+        with patch("assistant._stream_chat") as interpret, patch(
             "assistant.get_weather", return_value=WEATHER
         ) as weather, patch("assistant.chat") as chat:
             reply, history = answer_with_history(
-                "local", "Will it rain tomorrow?", [], on_chunk=chunks.append, on_tool_debug=debug.append,
+                "local", "What's the weather tomorrow?", [], on_chunk=chunks.append, on_tool_debug=debug.append,
             )
         weather.assert_called_once_with("Boston", "tomorrow")
         chat.assert_not_called()
@@ -85,15 +92,10 @@ class StructuredAssistantTests(unittest.TestCase):
         self.assertEqual(chunks, [reply])
         self.assertEqual(history.active_task, {"intent": "weather", "location": "Boston", "day": "tomorrow"})
         self.assertIn("saved default", " ".join(debug))
-        self.assertEqual(interpret.call_args.kwargs["format_schema"], ROUTER_SCHEMA)
-        self.assertNotIn("tools", interpret.call_args.kwargs)
+        interpret.assert_not_called()
 
     def test_explicit_city_and_followup_remember_place_and_day(self):
-        with patch("assistant._stream_chat", side_effect=[
-            plan("weather", location="London", day="today"),
-            plan("weather", day="tomorrow"),
-            plan("weather", location="Paris"),
-        ]), patch("assistant.get_weather", return_value=WEATHER) as weather:
+        with patch("assistant._stream_chat") as router, patch("assistant.get_weather", return_value=WEATHER) as weather:
             _, history = answer_with_history("local", "Weather in London today?", [])
             _, history = answer_with_history("local", "And tomorrow?", history)
             _, history = answer_with_history("local", "What about Paris?", history)
@@ -101,6 +103,7 @@ class StructuredAssistantTests(unittest.TestCase):
             call("London", "today"), call("London", "tomorrow"), call("Paris", "tomorrow"),
         ])
         self.assertEqual(history.active_task["location"], "Paris")
+        router.assert_not_called()
         history.clear()
         self.assertIsNone(history.active_task)
 
@@ -129,12 +132,10 @@ class StructuredAssistantTests(unittest.TestCase):
         self.assertEqual(history[-1]["content"], reply)
 
     def test_negated_setting_is_not_saved_even_if_interpreter_requests_it(self):
-        with patch("assistant._stream_chat", return_value=plan(
-            "write_setting", setting_name="default_city", setting_value="London"
-        )), patch("assistant.update_settings") as save:
+        with patch("assistant.chat", return_value="Okay, I won't change it."), patch("assistant.update_settings") as save:
             reply, _ = answer_with_history("local", "Don't change my default city to London.", [])
         save.assert_not_called()
-        self.assertIn("didn't change", reply)
+        self.assertIn("won't change", reply)
 
     def test_explicit_setting_change_is_saved(self):
         with patch("assistant._stream_chat", return_value=plan(
@@ -158,6 +159,12 @@ class StructuredAssistantTests(unittest.TestCase):
             _, history = answer_with_history("local", "In Boston", history)
         self.assertEqual(question, "Which city should I check?")
         weather.assert_called_once_with("Boston", "tomorrow")
+
+    def test_new_weather_command_does_not_inherit_pending_day(self):
+        pending = ConversationHistory(active_task={"intent": "weather", "day": "tomorrow", "pending": True})
+        with patch("assistant.get_weather", return_value=WEATHER) as weather:
+            answer_with_history("local", "Weather in Paris today?", pending)
+        weather.assert_called_once_with("Paris", "today")
 
     def test_date_is_resolved_from_user_words_instead_of_model_guess(self):
         with patch("assistant._stream_chat", return_value=plan("weather", location="London", day="2025-09-28")), patch(
@@ -187,12 +194,10 @@ class StructuredAssistantTests(unittest.TestCase):
         self.assertEqual(chunks, [])
 
     def test_bad_interpretation_does_not_execute_tools(self):
-        with patch("assistant._stream_chat", return_value={"role": "assistant", "content": "not json"}), patch(
-            "assistant.get_weather"
-        ) as weather:
-            with self.assertRaises(OllamaError):
-                answer_with_history("local", "What's the weather?", [])
-        weather.assert_not_called()
+        with patch("assistant._stream_chat") as router, patch("assistant.get_weather", return_value=WEATHER) as weather:
+            answer_with_history("local", "What's the weather?", [])
+        router.assert_not_called()
+        weather.assert_called_once()
 
 
 if __name__ == "__main__":

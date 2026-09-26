@@ -18,6 +18,7 @@ from assistant import (
     choose_model,
     list_models,
 )
+from local_schedule import Schedule
 
 
 class ConversationWindow:
@@ -162,6 +163,8 @@ def main() -> int:
     history: list[dict[str, str]] = []
     utterance = UtteranceBuffer(args.pause_seconds)
     conversation = ConversationWindow(args.conversation_timeout)
+    schedule = Schedule()
+    next_schedule_poll = 0.0
     reply_events: Queue[tuple[str, int, object]] = Queue()
     turn_number = 0
     active_turn: int | None = None
@@ -208,6 +211,11 @@ def main() -> int:
         mic.start()
         try:
             while True:
+                if monotonic() >= next_schedule_poll:
+                    schedule.fire_due()
+                    for notice in schedule.take_notifications():
+                        print(f"\n[Schedule] {notice}", flush=True)
+                    next_schedule_poll = monotonic() + 0.5
                 try:
                     kind, text, at = speech_events.get_nowait()
                 except Empty:

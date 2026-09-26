@@ -1,0 +1,695 @@
+{
+  "train": {
+    "chat": [
+      "Hello, how are you?",
+      "How do black holes form?",
+      "Why does rain happen?",
+      "Explain how clocks work",
+      "What is a leap year?",
+      "Tell me a story about a snowy city",
+      "Don't change my default city to London",
+      "If I changed my units would that affect forecasts?",
+      "Can you check weather forecasts?",
+      "Tell me a joke",
+      "Why is San Francisco so foggy?",
+      "What does Celsius mean?",
+      "Who invented the thermometer?",
+      "I like warm weather",
+      "Don't check the weather",
+      "How do I change your settings?",
+      "What is the capital of France?",
+      "Good morning Baby",
+      "Hey what's up",
+      "How's your day going",
+      "I'm feeling tired today",
+      "Thanks that helps",
+      "That's interesting tell me more",
+      "Explain photosynthesis simply",
+      "Why is the ocean salty",
+      "How does gravity work",
+      "What should I cook for dinner",
+      "Give me a quick pasta recipe",
+      "Tell me something interesting",
+      "Who was Ada Lovelace",
+      "What does humidity mean",
+      "Why do days get shorter in winter",
+      "How do I convert Fahrenheit to Celsius",
+      "What's the difference between climate and weather",
+      "How many days are in February",
+      "Suggest some ways to relax",
+      "Can you set alarms",
+      "Are you able to send WhatsApp messages",
+      "Which things can you help me with",
+      "How do your default settings work",
+      "What is a time zone",
+      "What causes a rainbow",
+      "I had a great day",
+      "Tell me a fun fact about space",
+      "What does forecast mean",
+      "How does a timer work",
+      "What should I say to book a cab",
+      "Can you save notes",
+      "How can I check the weather with you",
+      {
+        "text": "How do black holes form?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "How are you?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Explain why it rains",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Tell me a joke about cats",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "What's your name?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Thanks that's all",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "weather": [
+      "What's the weather today?",
+      "Will it rain tomorrow?",
+      "Do I need an umbrella outside?",
+      "How cold is it in Boston?",
+      "Give me the forecast for Paris",
+      "Is it snowing here?",
+      "What's the temperature outside?",
+      "Will London be sunny this afternoon?",
+      "Check the forecast for September 28",
+      "Is it warm enough to go outside without a jacket?",
+      "Will it rain in my default city?",
+      "Tell me tomorrow's high temperature",
+      "Weather please",
+      "Is it raining outside",
+      "How's the weather looking",
+      "What's it like outside right now",
+      "Will I need a coat today",
+      "Should I take an umbrella this morning",
+      "Is it going to be hot today",
+      "Any rain coming this evening",
+      "How warm is it out there",
+      "Check tomorrow's forecast",
+      "What's the low tonight",
+      "Will it freeze overnight",
+      "How's the weather in New York",
+      "What's the forecast for this weekend",
+      "Is today a good day to hang clothes outside",
+      "Will I get soaked if I go for a walk now",
+      "Is it sunny in Mumbai",
+      "Temperature in my city please",
+      "How cold will it get tomorrow",
+      "What's the weather on October fifth",
+      "Is there a chance of snow today",
+      "Will I need sunscreen outdoors this afternoon",
+      "Can you tell me the weather in Austin",
+      "Check the weather where I live",
+      "What's tomorrow looking like weather wise",
+      "Will it be dry for my run this afternoon",
+      "Give me the weather for Friday",
+      "Do I need a raincoat today",
+      {
+        "text": "And tomorrow?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "What about London?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "How about next Monday?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "And in Paris?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "What about the weekend?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "What about the temperature tonight?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "clock": [
+      "What time is it?",
+      "What's today's date?",
+      "Tell me the time and date",
+      "Which day of the week is it?",
+      "What's the current time?",
+      "What month are we in?",
+      "What's the date today?",
+      "Give me the time please",
+      "Is today Friday?",
+      "What year is it now?",
+      "Tell me today's day and date",
+      "Read the clock for me",
+      "Time please",
+      "Today's date please",
+      "Tell me what time it is now",
+      "What's the day today",
+      "What time have we got",
+      "Could I get the current date",
+      "Which month is it right now",
+      "Tell me the current year",
+      "Is it Monday today",
+      "Is it morning or afternoon now",
+      "What's the time right this second",
+      "I need to know today's date",
+      "Read me the date and time",
+      "Give me the day of the week",
+      "What's the date and year",
+      "Baby tell me the time",
+      "Can you check the clock",
+      "What's today's full date",
+      "What is the time now please",
+      "Do you know what day it is",
+      "What's the current day and month",
+      "Tell me the time only",
+      "What day of the month is it",
+      "Please give me both the time and date",
+      {
+        "text": "What time is it now?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Tell me today's date please",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "read_setting": [
+      "What is my default city?",
+      "Which temperature unit did I save?",
+      "Read my settings",
+      "What location are you using by default?",
+      "Are my temperatures in Celsius or Fahrenheit?",
+      "Tell me my saved preferences",
+      "Have I configured a city?",
+      "What city do you remember for weather?",
+      "Show my weather settings",
+      "What are my defaults?",
+      "Did I set a default location?",
+      "Which units are configured?",
+      "What's my saved city",
+      "Which city is set as home",
+      "What units am I using",
+      "Read back my default location",
+      "Tell me which city you have for me",
+      "What have you saved in my preferences",
+      "What temperature scale did I pick",
+      "Do I have any weather preferences saved",
+      "Check my default settings",
+      "Are you using Fahrenheit by default",
+      "Have you remembered a city for me",
+      "Which place do my weather requests default to",
+      "What is the stored temperature unit",
+      "Show the city in my settings",
+      "Remind me of my preferred units",
+      "Check what my home city is set to",
+      "Did you save my city preference",
+      "What's my temperature preference",
+      "Tell me whether you use Celsius for me",
+      "What is my configured weather location",
+      "Read my city and unit preferences",
+      "Are there any defaults configured",
+      "Where do you think my home city is",
+      "Which units will you normally use",
+      {
+        "text": "Which city is my default?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "What units have I saved?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "write_setting": [
+      "Set my default city to Boston",
+      "Use Celsius from now on",
+      "Remember London as my home city",
+      "Clear my default city",
+      "Change my temperature preference to Fahrenheit",
+      "Make Paris my default location",
+      "Forget my saved weather city",
+      "Always give temperatures in Celsius",
+      "Save Chicago as my city",
+      "Switch my default units to Fahrenheit",
+      "Please update my home city to Delhi",
+      "Remove the city from my preferences",
+      "Use Fahrenheit by default",
+      "My default city should be Manchester",
+      "Change my saved city to Pune",
+      "Save my weather location as Seattle",
+      "Set Celsius as the default",
+      "Please remember I prefer Celsius",
+      "Forget the default location",
+      "Stop remembering my home city",
+      "I want my default city to be Hyderabad",
+      "Use Berlin for weather unless I say otherwise",
+      "Make my usual city Vancouver",
+      "Remember that I live in Bristol for weather",
+      "Switch to Celsius for future forecasts",
+      "Change my preferred unit to Fahrenheit",
+      "From now on use Kolkata as my city",
+      "Reset my saved city",
+      "Clear the location preference",
+      "Set my home city to San Diego",
+      "Keep Chennai as my default",
+      "Use Celsius for all my weather reports",
+      "Please save my preferred city as Leeds",
+      "Change the default temperature scale to Celsius",
+      "I'd prefer Fahrenheit going forward",
+      "Remove my default location setting",
+      {
+        "text": "Make Dublin my default city",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Always use Fahrenheit for me",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "unsupported_action": [
+      "Set a timer for ten minutes",
+      "Send a message to my friend",
+      "Write down a note",
+      "Please book a cab",
+      "Get me a taxi to the airport",
+      "Order an Uber home",
+      "Book a ride for tomorrow morning",
+      "Call a cab for me",
+      "Send a WhatsApp message to Mum",
+      "Text Alex that I'm running late",
+      "Call my brother",
+      "Email this to my manager",
+      "Reply to Dad saying yes",
+      "Start a five minute timer",
+      "Wake me up at six tomorrow",
+      "Set an alarm for eight thirty",
+      "Remind me to take out the bins tonight",
+      "Cancel my alarm",
+      "Pause the kitchen timer",
+      "Save a note that the WiFi password changed",
+      "Add eggs to my notes",
+      "Write down my idea for a garden",
+      "Read my last note",
+      "Delete yesterday's note",
+      "Put my appointment in the calendar",
+      "Schedule a meeting with Lee",
+      "Move my dentist appointment to Friday",
+      "Cancel my taxi booking",
+      "Start a stopwatch",
+      "Send my location to Priya",
+      "Remind me to drink water every hour",
+      {
+        "text": "Set a timer for my walk",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Send this forecast to Dad",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ]
+  },
+  "validation": {
+    "chat": [
+      "What causes thunderstorms?",
+      "Could you explain time zones?",
+      "Please don't save Seattle as my city",
+      "Imagine I asked you to use Fahrenheit",
+      "Can you remember my preferences?",
+      "How are you feeling today?",
+      "Morning, how's everything",
+      "Why does the moon change shape",
+      "Give me an idea for lunch",
+      "What are you able to help with",
+      "Why do thermometers use mercury",
+      "I'm glad it's Friday",
+      "Can you book rides for people",
+      {
+        "text": "How do volcanoes erupt?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "How's your day been?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "weather": [
+      "Any chance of showers this evening?",
+      "Should I bring a coat in Berlin today?",
+      "Forecast for the place I live please",
+      "How hot will Rome get tomorrow?",
+      "Will my laundry dry outdoors today",
+      "Do I need waterproof shoes outside",
+      "How chilly is it this morning",
+      "Can I get the weekend forecast for Bath",
+      {
+        "text": "And this evening?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "How about Cardiff?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "clock": [
+      "Could you tell me what the time is now?",
+      "What day is today?",
+      "Can I have today's calendar date?",
+      "Tell me both today's date and the time now",
+      "Baby what time have you got",
+      "Is today the twenty fifth",
+      "What's the month and year right now",
+      "Read out the time then the date",
+      {
+        "text": "Could you read the current time?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "read_setting": [
+      "Which city have you stored for me?",
+      "Check whether my saved units are Fahrenheit",
+      "What location is in my preferences?",
+      "Remind me what my weather defaults are",
+      "What units will you give my forecast in",
+      "Which location have you remembered",
+      "What did I set as my usual city",
+      "Have I chosen Celsius as my default",
+      {
+        "text": "What is my stored city?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "write_setting": [
+      "I'd like you to remember Madrid as my default city",
+      "From now on report temperatures in Fahrenheit",
+      "Delete my stored city preference",
+      "Please save Celsius as my preferred unit",
+      "Save my usual weather city as Oxford",
+      "I'd like future forecasts in Celsius",
+      "Unset my saved home location",
+      "Keep Fahrenheit as my usual unit",
+      {
+        "text": "Save York as my default location",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "unsupported_action": [
+      "Remind me to call Dad",
+      "Arrange a taxi to the station",
+      "Message Joe that dinner is ready",
+      "Start a timer for my tea",
+      "Save this as a note for later",
+      "Add the school meeting to my calendar",
+      {
+        "text": "Book a cab for this afternoon",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ]
+  },
+  "test": {
+    "chat": [
+      "Why do we have seasons?",
+      "Explain how stars collapse",
+      "Is a date a fruit?",
+      "How does a weather forecast get made?",
+      "Tell me a bedtime story set during a storm",
+      "Don't switch my units to Celsius",
+      "What would happen if I made Tokyo my default?",
+      "What can you do with my settings?",
+      "Find a recipe for soup",
+      {
+        "text": "Tell me how tides work",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "Are you having a good day?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "weather": [
+      "Will I get wet walking outside tonight?",
+      "How's it looking outdoors in Tokyo?",
+      "Give me Saturday's weather outlook",
+      "Should I pack an umbrella for Edinburgh tomorrow?",
+      "Is there snow expected where I live?",
+      "What will the temperature be on October third?",
+      {
+        "text": "And the following day?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      },
+      {
+        "text": "What about Lisbon?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "clock": [
+      "Have you got the time?",
+      "Which year are we currently in?",
+      "Please read out today's date",
+      "What weekday is today?",
+      "I need the current date as well as the time",
+      "Can you tell me the time right now please?",
+      {
+        "text": "Give me the time right now",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "read_setting": [
+      "What home location did I tell you to remember?",
+      "Do you have a default city stored?",
+      "Which scale are my temperatures configured in?",
+      "Read back the preferences you've saved",
+      "What did I choose for my weather location?",
+      "Are you configured to use Celsius?",
+      {
+        "text": "Which temperature unit is saved for me?",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "write_setting": [
+      "Remember that my default location is Lisbon",
+      "I want all future temperatures in Celsius",
+      "Erase the home city you have saved",
+      "Make Fahrenheit the unit you normally use",
+      "Update my default weather location to Sydney",
+      "Store Toronto as the city to use by default",
+      {
+        "text": "Keep Exeter as my default city",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ],
+    "unsupported_action": [
+      "Set an alarm for seven",
+      "Tell Sam I'll be late",
+      "Make a note that I need milk",
+      {
+        "text": "Play my favourite playlist",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Turn down the music",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Skip this song",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Turn the bedroom lights off",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Set the thermostat to twenty degrees",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Lock the front door",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Buy a bag of coffee beans",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Order groceries for delivery",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Purchase two cinema tickets",
+        "group": "unseen_action"
+      },
+      {
+        "text": "Play some relaxing music",
+        "active_task": {
+          "intent": "weather"
+        },
+        "group": "context"
+      }
+    ]
+  },
+  "_meta": {
+    "version": 2,
+    "source": "Manually authored realistic scenarios; not collected user transcripts.",
+    "policy": "chat includes explanations and capability questions; unsupported_action requests an unavailable action. uncertain is evaluation-only for missing context or multiple actions.",
+    "held_out_action_families": [
+      "music playback",
+      "smart home control",
+      "shopping"
+    ],
+    "test_policy": "Original test utterances preserved except correcting unsupported action labels. Additional held-out families and contexts added. Never train on validation/test/challenge."
+  },
+  "challenge": {
+    "chat": [
+      "Don't make Glasgow my default city",
+      "If I asked for Celsius would that change my settings?",
+      "Don't look up a forecast, just explain what fog is",
+      "I don't need the time, tell me a joke",
+      "What would you do if I asked you to book a taxi?"
+    ],
+    "weather": [
+      "Don't use my default city, check the weather in Nice"
+    ],
+    "clock": [],
+    "read_setting": [],
+    "write_setting": [
+      "Actually save Belfast as my city instead"
+    ],
+    "unsupported_action": [],
+    "uncertain": [
+      "And tomorrow?",
+      "What about there?",
+      "Do it",
+      "Change that",
+      "What's the weather and set a timer for ten minutes",
+      {
+        "text": "Yes",
+        "active_task": {
+          "intent": "weather"
+        }
+      },
+      {
+        "text": "Do that instead",
+        "active_task": {
+          "intent": "write_setting"
+        }
+      }
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-"""Run the production router on real Ollama; no workflows execute."""
+"""Evaluate explicit command routing without Ollama or executing workflows."""
 
 import argparse
 from datetime import datetime
@@ -7,9 +7,9 @@ from pathlib import Path
 from time import monotonic
 import uuid
 
-from assistant import OllamaError, choose_model, list_models, _day_from_prompt, _weather_location_from_prompt
+from assistant import OllamaError, _day_from_prompt, _weather_location_from_prompt
 from evaluate_tools import CASE_PATH, load_cases
-from structured_assistant import interpret_request, ROUTER_SCHEMA, ROUTER_INSTRUCTIONS, ROUTER_EXAMPLES
+from structured_assistant import interpret_request
 
 
 TO_INTENT = {
@@ -20,16 +20,12 @@ TO_INTENT = {
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", help="Exact installed model name; omit for the picker.")
+    parser.add_argument("--model", help="Ignored legacy option; command routing uses no model.")
     parser.add_argument("--repeat", type=int, default=1)
     args = parser.parse_args(argv)
     if args.repeat < 1:
         parser.error("repeat must be positive")
     try:
-        models = list_models()
-        model = args.model or choose_model(models)
-        if model not in models:
-            parser.error("Use a model name shown by ollama list.")
         cases = load_cases(CASE_PATH)
     except (OllamaError, OSError, ValueError) as exc:
         print(f"Cannot start: {exc}")
@@ -39,10 +35,9 @@ def main(argv=None):
     )
     output.mkdir(parents=True)
     (output / "metadata.json").write_text(json.dumps({
-        "model": model, "repeat": args.repeat, "cases": cases,
-        "schema": ROUTER_SCHEMA, "instructions": ROUTER_INSTRUCTIONS, "examples": ROUTER_EXAMPLES,
+        "router": "explicit_commands_v1", "repeat": args.repeat, "cases": cases,
     }, indent=2), encoding="utf-8")
-    print(f"Routing only: no weather requests or settings changes. Results: {output}", flush=True)
+    print(f"Routing only: no Ollama calls or workflow execution. Results: {output}", flush=True)
     rows = []
     interrupted = False
     try:
@@ -63,7 +58,7 @@ def main(argv=None):
                     started = monotonic()
                     print(f"{case['id']} ({repeat}/{args.repeat}) ...", flush=True)
                     try:
-                        row["plan"] = interpret_request(model, case["prompt"], task, on_tool_debug=events.append)
+                        row["plan"] = interpret_request("", case["prompt"], task, on_tool_debug=events.append)
                         row["status"] = "pass" if row["plan"]["intent"] == expected else "wrong_intent"
                     except OllamaError as exc:
                         row.update(status="error", error=str(exc))
