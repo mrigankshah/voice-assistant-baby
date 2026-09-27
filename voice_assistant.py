@@ -106,6 +106,8 @@ class UtteranceBuffer:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Talk to a local Ollama model through Moonshine.")
+    parser.add_argument("--backend", choices=["explicit", "tools"], default="explicit",
+                        help="Opt-in experimental model tool calling.")
     parser.add_argument(
         "--conversation-timeout",
         type=float,
@@ -194,6 +196,7 @@ def main() -> int:
                 model, prompt, prior_history, on_chunk=on_chunk,
                 on_tool_debug=on_tool_debug if args.debug_tools else None,
                 cancellation=cancellation,
+                backend=args.backend,
             )
         except ChatInterrupted:
             return

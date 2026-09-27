@@ -1,0 +1,18 @@
+{
+  "contract": "baby-tools-v1",
+  "status": "hand-authored pilot; expand before deployment",
+  "splits": {
+    "train": {
+      "count": 51,
+      "sha256": "a175a887c185d1627c5a6ef848db4e86e87bab8051ed684f7fca8a4495dbab4f"
+    },
+    "validation": {
+      "count": 19,
+      "sha256": "d7bac36f7cd8ceac1e307677c5823c171e3cbbad4dc51ac2aa790124326c2d01"
+    },
+    "test": {
+      "count": 35,
+      "sha256": "f907e2ac24fa1697163243c0b120ac3e1a55df3d1f786a6358e7b3103f11019e"
+    }
+  }
+}

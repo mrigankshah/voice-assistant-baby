@@ -644,8 +644,15 @@ def answer_with_history(
     on_tool_debug: Callable[[str], None] | None = None,
     cancellation: ChatCancellation | None = None,
     base_url: str = OLLAMA_URL,
+    backend: str = "explicit",
 ) -> tuple[str, list[dict[str, str]]]:
     """Use a structured request interpreter followed by Python workflows."""
+    if backend == "tools":
+        from finetuning.runtime import answer
+        return answer(model, prompt, history, on_chunk=on_chunk,
+                      on_tool_debug=on_tool_debug, cancellation=cancellation, base_url=base_url)
+    if backend != "explicit":
+        raise ValueError("Unknown assistant backend")
     from structured_assistant import answer_structured
 
     return answer_structured(
@@ -674,6 +681,8 @@ def main() -> int:
     from local_schedule import Schedule
 
     parser = argparse.ArgumentParser(description="Chat with a local Ollama model.")
+    parser.add_argument("--backend", choices=["explicit", "tools"], default="explicit",
+                        help="Opt-in experimental model tool calling; default uses command rules.")
     parser.add_argument(
         "--debug-tools", action="store_true",
         help="Print tool requests and results while chatting.",
@@ -737,6 +746,7 @@ def main() -> int:
                 _, history = answer_with_history(
                     model, prompt, history, on_chunk=show_chunk,
                     on_tool_debug=show_tool_debug if args.debug_tools else None,
+                    backend=args.backend,
                 )
             except OllamaError as exc:
                 print(f"\nError: {exc}", file=sys.stderr)
