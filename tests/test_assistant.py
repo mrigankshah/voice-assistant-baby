@@ -115,7 +115,7 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(chunks, ["Hello ", "from Ollama"])
         self.assertEqual(
             FakeOllamaHandler.requests[-1],
-            ("/api/chat", {"model": "alpha:latest", "messages": messages, "stream": True}),
+            ("/api/chat", {"model": "alpha:latest", "messages": messages, "stream": True, "keep_alive": -1}),
         )
 
     def test_picker_retries_invalid_choice(self):

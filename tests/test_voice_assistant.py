@@ -6,6 +6,23 @@ from voice_assistant import ConversationWindow, UtteranceBuffer
 
 
 class ConversationWindowTests(unittest.TestCase):
+    def test_polite_sleep_commands_bypass_chat(self):
+        for command in ("Please go to sleep.", "Hey Baby, go to sleep now!",
+                        "Okay, go to sleep.", "Could you please go to sleep?"):
+            with self.subTest(command=command):
+                conversation = ConversationWindow(15)
+                conversation.accept("Hey Baby", 0)
+                self.assertIsNone(conversation.accept(command, 1))
+                self.assertFalse(conversation.awake)
+                self.assertIsNone(conversation.accept("What time is it?", 2))
+
+    def test_sleep_discussion_is_not_a_command(self):
+        conversation = ConversationWindow(15)
+        conversation.accept("Hey Baby", 0)
+        for text in ("Why do people go to sleep?", "Don't go to sleep", "Tell me a story before I go to sleep"):
+            self.assertEqual(conversation.accept(text, 1), text)
+            self.assertTrue(conversation.awake)
+
     def test_background_speech_cannot_wake_it(self):
         conversation = ConversationWindow(15)
         for text in ("What's for dinner?", "They said hey baby yesterday", "Hey babysitter"):

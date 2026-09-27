@@ -7,11 +7,33 @@ from zoneinfo import ZoneInfo
 
 from assistant import answer_with_history
 from local_schedule import Schedule, next_alarm
-from schedule_commands import timer_seconds
+from schedule_commands import timer_seconds, identifier
 from schedule_commands import handle_alarm
 
 
 class ScheduleTests(unittest.TestCase):
+    def test_spoken_identifiers(self):
+        for kind in ("alarm", "timer"):
+            for phrase in (f"Cancel {kind} number one", f"Cancel {kind} #1", f"Cancel {kind} 1", "one", "number one"):
+                self.assertEqual(identifier(phrase, kind), "1")
+            self.assertEqual(identifier(f"Cancel {kind} number twenty one", kind), "21")
+
+    def test_spoken_cancel_selects_correct_job_and_pending_answer(self):
+        with patch("structured_assistant.Schedule", return_value=self.schedule), patch("assistant.chat") as chat:
+            for kind in ("alarm", "timer"):
+                create = (lambda: self.schedule.create_alarm(7, 0)[0]) if kind == "alarm" else (lambda: self.schedule.create_timer(60))
+                first, second = create(), create()
+                words = {1: "one", 2: "two", 3: "three", 4: "four"}
+                reply, history = answer_with_history("local", f"Cancel {kind}", [])
+                self.assertIn("Which", reply)
+                reply, history = answer_with_history("local", words[first], history)
+                self.assertIn(f"#{first}", reply)
+                self.assertEqual([j["id"] for j in self.schedule.list_jobs(kind)], [second])
+                reply, _ = answer_with_history("local", f"Cancel {kind} number {words[second]}", history)
+                self.assertIn("Cancelled", reply)
+                self.assertEqual(self.schedule.list_jobs(kind), [])
+            chat.assert_not_called()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

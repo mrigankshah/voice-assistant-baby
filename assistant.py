@@ -208,7 +208,7 @@ def _stream_chat(
         raise OllamaError("Ollama chat requires a local HTTP address.")
     connection = HTTPConnection(parsed_url.hostname, parsed_url.port, timeout=300)
     path = f"{parsed_url.path.rstrip('/')}/api/chat"
-    payload = {"model": model, "messages": messages, "stream": True}
+    payload = {"model": model, "messages": messages, "stream": True, "keep_alive": -1}
     if tools is not None:
         payload["tools"] = tools
     if format_schema is not None:

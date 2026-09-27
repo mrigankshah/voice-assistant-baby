@@ -110,7 +110,11 @@ Your existing Moonshine command is `moonshine-voice mic --language en --model-ar
 
 Choose an Ollama model and start with **"Hey Baby"**. You can say "Hey Baby, explain black holes" in one utterance, or say the wake phrase and then ask your question. The phrase must be at the beginning of the transcribed utterance; case and punctuation do not matter.
 
-After each reply, you have **15 seconds** to start a follow-up without repeating the wake phrase. Speaking within that window keeps the conversation active through your question and the next reply. The timer does not run while you are speaking, pausing within your question, or waiting for Ollama. After it expires, the screen shows `[Waiting for "Hey Baby".]`. Say **"go to sleep"** during an active conversation to return to waiting immediately. Completed conversation history is retained until the program exits.
+After each reply, you have **15 seconds** to start a follow-up without repeating the wake phrase. Speaking within that window keeps the conversation active through your question and the next reply. The timer does not run while you are speaking, pausing within your question, or waiting for Ollama. After it expires, the screen shows `[Waiting for "Hey Baby".]`. Say **"go to sleep"**, **"please go to sleep"**, or **"go to sleep now"** during an active conversation to return to waiting and clear conversation context. Timers and alarms remain active. An ordinary conversation timeout retains history.
+
+Chat requests use Ollama's `keep_alive: -1` option so the selected model stays loaded after a reply instead of unloading when idle. The first chat after starting Ollama still needs to load the model. This reserves memory even while idle; `ollama stop <model-name>` releases it manually. An Ollama restart or loading other models can still require a reload.
+
+To cancel a timer or alarm, digits and spoken numbers both work: **"Cancel alarm number one"**, **"Cancel timer number two"**, or **"Cancel alarm #1"**. If asked which one to cancel, you can answer **"one"** or **"number one"**.
 
 Moonshine still listens and transcribes locally while waiting, but ordinary conversation is ignored and is not sent to Ollama. The assistant disables returned audio data from Moonshine's transcripts because it only needs the recognized words; this avoids the slowdown measured in the Pi diagnostics. During an active conversation, nearby speech is treated as directed at the assistant; this does not identify individual speakers.
 

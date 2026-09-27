@@ -43,11 +43,13 @@ def timer_seconds(text):
 
 
 def identifier(text, kind):
-    if text.strip().isdecimal():
-        return text.strip()
-    match = re.search(rf"\b{kind}\s*(?:number|#)\s*(\d+)\b", text, re.IGNORECASE)
+    text = text.strip().rstrip(".!? ")
+    bare = re.fullmatch(rf"(?:number\s+|#\s*)?({NUMBER})(?:\s+please)?", text, re.IGNORECASE)
+    if bare:
+        return str(number(bare.group(1)))
+    match = re.search(rf"\b{kind}\s*(?:(?:number|#)\s*)?({NUMBER})(?=\s*(?:please\b)?[.!?]*$)", text, re.IGNORECASE)
     if match:
-        return match.group(1)
+        return str(number(match.group(1)))
     match = re.search(r"\b(?:called|named)\s+([\w-]+)\b", text, re.IGNORECASE)
     if match:
         return match.group(1)

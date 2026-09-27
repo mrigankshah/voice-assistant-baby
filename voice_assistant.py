@@ -60,7 +60,11 @@ class ConversationWindow:
         elif not self.awake:
             return None
 
-        if " ".join(re.findall(r"\w+", text.casefold())) == "go to sleep":
+        normalized = " ".join(re.findall(r"\w+", text.casefold()))
+        if re.fullmatch(
+            r"(?:(?:okay|ok|alright) )?(?:(?:can you|could you|would you) )?"
+            r"(?:please )?go to sleep(?: now)?(?: please)?(?: baby)?", normalized
+        ):
             self.sleep()
             return None
         if not text:
@@ -244,6 +248,7 @@ def main() -> int:
                     prompt = conversation.accept(utterance.take(), monotonic())
                     if prompt is None:
                         if was_awake and not conversation.awake:
+                            history.clear()
                             print('\n[Waiting for "Hey Baby".]')
                         elif conversation.awake:
                             print("\n[I'm listening. What's your question?]")

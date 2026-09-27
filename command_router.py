@@ -25,12 +25,12 @@ def route_command(prompt: str, active_task: dict | None = None) -> dict:
         return {"intent": "chat"}
 
     if pending:
-        from schedule_commands import alarm_time, timer_seconds
+        from schedule_commands import identifier, timer_seconds
         kind, operation = active_task["intent"], active_task.get("operation")
         likely_answer = (
             kind == "weather" and bool(re.match(r"^(?:in|at|for|today|tomorrow|tonight)\b", lower) or re.fullmatch(r"[A-Z][a-z]+", text))
-            or kind == "timer" and (timer_seconds(text) is not None if operation == "create" else text.isdecimal())
-            or kind == "alarm" and (bool(re.search(r"\b\d+\b|\b(?:am|pm)\b", lower)) if operation == "create" else text.isdecimal())
+            or kind == "timer" and (timer_seconds(text) is not None if operation == "create" else identifier(text, kind) is not None)
+            or kind == "alarm" and (bool(re.search(r"\b\d+\b|\b(?:am|pm)\b", lower)) if operation == "create" else identifier(text, kind) is not None)
         )
         if likely_answer:
             return {"intent": kind, "pending": True, "operation": operation}
